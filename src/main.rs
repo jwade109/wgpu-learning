@@ -1,668 +1,377 @@
-use camera::*;
-use mesh_builder::*;
-use std::{iter, sync::Arc};
-use wgpu::util::DeviceExt;
-use winit::{
-    application::ApplicationHandler,
-    event::*,
-    event_loop::{ActiveEventLoop, EventLoop},
-    keyboard::{KeyCode, PhysicalKey},
-    window::Window,
-};
-
-mod bind_group_layout;
-mod camera;
-mod mesh_builder;
+use glfw::{fail_on_errors, Action, ClientApiHint, Key, Window, WindowHint};
+mod renderer_backend;
+use renderer_backend::{bind_group_layout, material::Material, mesh_builder, pipeline, ubo::UBO};
 mod model;
-mod texture;
-mod ubo;
+use glm::ext;
+use model::game_objects::Object;
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Vertex {
-    position: [f32; 3],
-    tex_coords: [f32; 2],
+struct World {
+    quads: Vec<Object>,
+    tris: Vec<Object>,
 }
 
-impl Vertex {
-    const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2];
-
-    const fn new(pos: [f32; 3], tex_coords: [f32; 2]) -> Self {
-        Self {
-            position: pos,
-            tex_coords,
+impl World {
+    fn new() -> Self {
+        World {
+            quads: Vec::new(),
+            tris: Vec::new(),
         }
     }
 
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
-        use std::mem;
-
-        wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &Self::ATTRIBS,
+    fn update(&mut self, dt: f32) {
+        for i in 0..self.tris.len() {
+            self.tris[i].angle = self.tris[i].angle + self.tris[i].vel * dt;
+            if self.tris[i].angle > 360.0 {
+                self.tris[i].angle -= 360.0;
+            }
         }
     }
 }
 
-// lib.rs
-const VERTICES: &[Vertex] = &[
-    Vertex::new([-0.0868241, 0.49240386, 0.0], [0.4131759, 1.0 - 0.99240386]),
-    Vertex::new(
-        [-0.49513406, 0.06958647, 0.0],
-        [0.0048659444, 1.0 - 0.56958647],
-    ),
-    Vertex::new(
-        [-0.21918549, -0.44939706, 0.0],
-        [0.28081453, 1.0 - 0.05060294],
-    ),
-    Vertex::new([0.35966998, -0.3473291, 0.0], [0.85967, 1.0 - 0.1526709]),
-    Vertex::new([0.44147372, 0.2347359, 0.0], [0.9414737, 1.0 - 0.7347359]),
-];
-
-const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
-
-// We need this for Rust to store our data correctly for the shaders
-#[repr(C)]
-// This is so we can store this in a buffer
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct TransformUniform {
-    pub model: [[f32; 4]; 4],
-    pub time: f32,
-}
-
-impl TransformUniform {
-    pub fn new() -> Self {
-        Self {
-            model: cgmath::Matrix4::from_angle_z(cgmath::Rad(0.3)).into(),
-            time: 0.0,
-        }
-    }
-}
-
-pub struct State {
-    surface: wgpu::Surface<'static>,
+struct State<'a> {
+    instance: wgpu::Instance,
+    surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    is_surface_configured: bool,
-    window: Arc<Window>,
+    size: (i32, i32),
+    window: &'a mut Window,
     render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    diffuse_bind_group: wgpu::BindGroup,
-    diffuse_texture: texture::Texture,
-    camera: Camera,
-
     triangle_mesh: wgpu::Buffer,
-
-    camera_uniform: CameraUniform,
-    camera_buffer: wgpu::Buffer,
-    camera_bind_group: wgpu::BindGroup,
-    camera_controller: CameraController,
-
-    tf_uniform: TransformUniform,
-    tf_buffer: wgpu::Buffer,
-    tf_bind_group: wgpu::BindGroup,
+    quad_mesh: mesh_builder::Mesh,
+    triangle_material: Material,
+    quad_material: Material,
+    ubo: Option<UBO>,
 }
 
-impl State {
-    async fn new(window: Arc<Window>) -> anyhow::Result<State> {
-        let size = window.inner_size();
+impl<'a> State<'a> {
+    async fn new(window: &'a mut Window) -> Self {
+        let size = window.get_framebuffer_size();
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::PRIMARY,
-            flags: Default::default(),
-            memory_budget_thresholds: Default::default(),
-            backend_options: Default::default(),
-            display: None,
-        });
+        let instance_descriptor = wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..Default::default()
+        };
+        let instance = wgpu::Instance::new(instance_descriptor);
+        let surface = instance.create_surface(window.render_context()).unwrap();
 
-        let surface = instance.create_surface(window.clone()).unwrap();
+        let adapter_descriptor = wgpu::RequestAdapterOptionsBase {
+            power_preference: wgpu::PowerPreference::default(),
+            compatible_surface: Some(&surface),
+            force_fallback_adapter: false,
+        };
+        let adapter = instance.request_adapter(&adapter_descriptor).await.unwrap();
 
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .unwrap();
-
+        let device_descriptor = wgpu::DeviceDescriptor {
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::default(),
+            memory_hints: wgpu::MemoryHints::Performance,
+            label: Some("Device"),
+        };
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: None,
-                required_features: wgpu::Features::empty(),
-                experimental_features: wgpu::ExperimentalFeatures::disabled(),
-                // WebGL doesn't support all of wgpu's features, so if
-                // we're building for the web we'll have to disable some.
-                required_limits: if cfg!(target_arch = "wasm32") {
-                    wgpu::Limits::downlevel_webgl2_defaults()
-                } else {
-                    wgpu::Limits::default()
-                },
-                memory_hints: Default::default(),
-                trace: wgpu::Trace::Off, // Trace path
-            })
+            .request_device(&device_descriptor, None)
             .await
             .unwrap();
 
-        let surface_caps = surface.get_capabilities(&adapter);
-        // Shader code in this tutorial assumes an Srgb surface texture. Using a different
-        // one will result all the colors comming out darker. If you want to support non
-        // Srgb surfaces, you'll need to account for that when drawing to the frame.
-        let surface_format = surface_caps
+        let surface_capabilities = surface.get_capabilities(&adapter);
+        let surface_format = surface_capabilities
             .formats
             .iter()
             .copied()
-            .find(|f| f.is_srgb())
-            .unwrap_or(surface_caps.formats[0]);
-
+            .filter(|f| f.is_srgb())
+            .next()
+            .unwrap_or(surface_capabilities.formats[0]);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
-            width: size.width,
-            height: size.height,
-            present_mode: surface_caps.present_modes[0],
-            alpha_mode: surface_caps.alpha_modes[0],
+            width: size.0 as u32,
+            height: size.1 as u32,
+            present_mode: surface_capabilities.present_modes[0],
+            alpha_mode: surface_capabilities.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
+        surface.configure(&device, &config);
 
-        let diffuse_texture = texture::Texture::from_bytes(
+        let triangle_buffer = mesh_builder::make_triangle(&device);
+
+        let quad_mesh = mesh_builder::make_quad(&device);
+
+        let material_bind_group_layout;
+        {
+            let mut builder = bind_group_layout::Builder::new(&device);
+            builder.add_material();
+            material_bind_group_layout = builder.build("Material Bind Group Layout");
+        }
+
+        let ubo_bind_group_layout;
+        {
+            let mut builder = bind_group_layout::Builder::new(&device);
+            builder.add_ubo();
+            ubo_bind_group_layout = builder.build("UBO Bind Group Layout");
+        }
+
+        let render_pipeline: wgpu::RenderPipeline;
+        {
+            let mut builder = pipeline::Builder::new(&device);
+            builder.set_shader_module("shaders/shader.wgsl", "vs_main", "fs_main");
+            builder.set_pixel_format(config.format);
+            builder.add_vertex_buffer_layout(mesh_builder::Vertex::get_layout());
+            builder.add_bind_group_layout(&material_bind_group_layout);
+            builder.add_bind_group_layout(&ubo_bind_group_layout);
+            render_pipeline = builder.build("Render Pipeline");
+        }
+
+        let triangle_material = Material::new(
+            "../img/winry.jpg",
             &device,
             &queue,
-            include_bytes!("happy-tree.png"),
-            "happy-tree.png",
-        )
-        .unwrap();
+            "Triangle Material",
+            &material_bind_group_layout,
+        );
+        let quad_material = Material::new(
+            "../img/satin.jpg",
+            &device,
+            &queue,
+            "Quad Material",
+            &material_bind_group_layout,
+        );
 
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        // This should match the filterable field of the
-                        // corresponding Texture entry above.
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-                label: Some("texture_bind_group_layout"),
-            });
-
-        let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                },
-            ],
-            label: Some("diffuse_bind_group"),
-        });
-
-        let camera = Camera {
-            // position the camera 1 unit up and 2 units back
-            // +z is out of the screen
-            eye: (0.0, 1.0, 2.0).into(),
-            // have it look at the origin
-            target: (0.0, 0.0, 0.0).into(),
-            // which way is "up"
-            up: cgmath::Vector3::unit_y(),
-            aspect: config.width as f32 / config.height as f32,
-            fovy: 45.0,
-            znear: 0.1,
-            zfar: 100.0,
-        };
-
-        let mut camera_uniform = CameraUniform::new();
-        camera_uniform.update_view_proj(&camera);
-
-        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Camera Buffer"),
-            contents: bytemuck::cast_slice(&[camera_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let camera_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-                label: Some("camera_bind_group_layout"),
-            });
-
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &camera_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-            label: Some("camera_bind_group"),
-        });
-
-        let tf_uniform = TransformUniform::new();
-
-        let tf_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("TF Buffer"),
-            contents: bytemuck::cast_slice(&[tf_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let tf_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-                label: Some("tf_bind_group_layout"),
-            });
-
-        let tf_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &tf_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: tf_buffer.as_entire_binding(),
-            }],
-            label: Some("tf_bind_group"),
-        });
-
-        let shader_source = std::fs::read_to_string("shader.wgsl").unwrap();
-
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(shader_source.into()),
-        });
-
-        let render_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[
-                    Some(&texture_bind_group_layout),
-                    Some(&camera_bind_group_layout),
-                    Some(&tf_bind_group_layout),
-                ],
-                immediate_size: 0,
-            });
-
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[Vertex::desc()],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None, // Some(wgpu::Face::Back),
-                // Setting this to anything other than Fill requires Features::POLYGON_MODE_LINE
-                // or Features::POLYGON_MODE_POINT
-                polygon_mode: wgpu::PolygonMode::Fill,
-                // Requires Features::DEPTH_CLIP_CONTROL
-                unclipped_depth: false,
-                // Requires Features::CONSERVATIVE_RASTERIZATION
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            // If the pipeline will be used with a multiview render pass, this
-            // tells wgpu to render to just specific texture layers.
-            multiview_mask: None,
-            // Useful for optimizing shader compilation on Android
-            cache: None,
-        });
-
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(INDICES),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-
-        let triangle_mesh = mesh_builder::make_triangle(&device);
-
-        Ok(Self {
+        Self {
+            instance,
+            window,
             surface,
             device,
             queue,
             config,
-            is_surface_configured: false,
+            size,
             render_pipeline,
-            window,
-            vertex_buffer,
-            index_buffer,
-            diffuse_bind_group,
-            diffuse_texture,
-            camera,
-            camera_uniform,
-            camera_buffer,
-            camera_bind_group,
-            tf_uniform,
-            tf_buffer,
-            tf_bind_group,
-            camera_controller: CameraController::new(0.03),
-            triangle_mesh,
-        })
+            triangle_mesh: triangle_buffer,
+            quad_mesh,
+            triangle_material: triangle_material,
+            quad_material: quad_material,
+            ubo: None,
+        }
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
-        if width > 0 && height > 0 {
-            self.config.width = width;
-            self.config.height = height;
+    fn resize(&mut self, new_size: (i32, i32)) {
+        if new_size.0 > 0 && new_size.1 > 0 {
+            self.size = new_size;
+            self.config.width = new_size.0 as u32;
+            self.config.height = new_size.1 as u32;
             self.surface.configure(&self.device, &self.config);
-            self.is_surface_configured = true;
         }
     }
 
-    fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
-        if code == KeyCode::Escape && is_pressed {
-            event_loop.exit();
-        } else {
-            self.camera_controller.handle_key(code, is_pressed);
-        }
+    fn update_surface(&mut self) {
+        self.surface = self
+            .instance
+            .create_surface(self.window.render_context())
+            .unwrap();
     }
 
-    fn update(&mut self) {
-        self.camera_controller.update_camera(&mut self.camera);
-        self.camera_uniform.update_view_proj(&self.camera);
-
-        self.queue.write_buffer(
-            &self.camera_buffer,
-            0,
-            bytemuck::cast_slice(&[self.camera_uniform]),
-        );
-
-        self.queue
-            .write_buffer(&self.tf_buffer, 0, bytemuck::cast_slice(&[self.tf_uniform]))
+    pub fn build_ubos_for_objects(&mut self, object_count: usize) {
+        let ubo_bind_group_layout;
+        {
+            let mut builder = bind_group_layout::Builder::new(&self.device);
+            builder.add_ubo();
+            ubo_bind_group_layout = builder.build("UBO Bind Group Layout");
+        }
+        self.ubo = Some(UBO::new(&self.device, object_count, ubo_bind_group_layout));
     }
 
-    fn render(&mut self) -> anyhow::Result<()> {
-        self.window.request_redraw();
+    fn render(
+        &mut self,
+        quads: &Vec<Object>,
+        tris: &Vec<Object>,
+    ) -> Result<(), wgpu::SurfaceError> {
+        self.device.poll(wgpu::Maintain::wait());
 
-        // We can't render unless the surface is configured
-        if !self.is_surface_configured {
-            return Ok(());
+        // Upload
+        let mut offset: u64 = 0;
+        for i in 0..quads.len() {
+            let c0 = glm::Vec4::new(1.0, 0.0, 0.0, 0.0);
+            let c1 = glm::Vec4::new(0.0, 1.0, 0.0, 0.0);
+            let c2 = glm::Vec4::new(0.0, 0.0, 1.0, 0.0);
+            let c3 = glm::Vec4::new(0.0, 0.0, 0.0, 1.0);
+            let m1 = glm::Matrix4::new(c0, c1, c2, c3);
+            let m2 = glm::Matrix4::new(c0, c1, c2, c3);
+            let matrix = ext::rotate(&m2, quads[i].angle, glm::Vector3::new(0.0, 0.0, 1.0))
+                * ext::translate(&m1, quads[i].position);
+            self.ubo
+                .as_mut()
+                .unwrap()
+                .upload(offset + i as u64, &matrix, &self.queue);
         }
 
-        let output = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(surface_texture) => surface_texture,
-            wgpu::CurrentSurfaceTexture::Suboptimal(surface_texture) => {
-                self.surface.configure(&self.device, &self.config);
-                surface_texture
-            }
-            wgpu::CurrentSurfaceTexture::Timeout
-            | wgpu::CurrentSurfaceTexture::Occluded
-            | wgpu::CurrentSurfaceTexture::Validation => {
-                // Skip this frame
-                return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Outdated => {
-                self.surface.configure(&self.device, &self.config);
-                return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Lost => {
-                // You could recreate the devices and all resources
-                // created with it here, but we'll just bail
-                anyhow::bail!("Lost device");
-            }
+        offset = quads.len() as u64;
+        for i in 0..tris.len() {
+            let c0 = glm::Vec4::new(1.0, 0.0, 0.0, 0.0);
+            let c1 = glm::Vec4::new(0.0, 1.0, 0.0, 0.0);
+            let c2 = glm::Vec4::new(0.0, 0.0, 1.0, 0.0);
+            let c3 = glm::Vec4::new(0.0, 0.0, 0.0, 1.0);
+            let m1 = glm::Matrix4::new(c0, c1, c2, c3);
+            let m2 = glm::Matrix4::new(c0, c1, c2, c3);
+            let matrix = ext::rotate(&m2, tris[i].angle, glm::Vector3::new(0.0, 0.0, 1.0))
+                * ext::translate(&m1, tris[i].position);
+            self.ubo
+                .as_mut()
+                .unwrap()
+                .upload(offset + i as u64, &matrix, &self.queue);
+        }
+
+        let event = self.queue.submit([]);
+        let maintain = wgpu::Maintain::WaitForSubmissionIndex(event);
+        self.device.poll(maintain);
+
+        let drawable = self.surface.get_current_texture()?;
+        let image_view_descriptor = wgpu::TextureViewDescriptor::default();
+        let image_view = drawable.texture.create_view(&image_view_descriptor);
+
+        let command_encoder_descriptor = wgpu::CommandEncoderDescriptor {
+            label: Some("Render Encoder"),
         };
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
-        let mut encoder = self
+        let mut command_encoder = self
             .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            });
+            .create_command_encoder(&command_encoder_descriptor);
+
+        let color_attachment = wgpu::RenderPassColorAttachment {
+            view: &image_view,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(wgpu::Color {
+                    r: 0.75,
+                    g: 0.5,
+                    b: 0.25,
+                    a: 1.0,
+                }),
+                store: wgpu::StoreOp::Store,
+            },
+        };
+
+        let render_pass_descriptor = wgpu::RenderPassDescriptor {
+            label: Some("Render Pass"),
+            color_attachments: &[Some(color_attachment)],
+            depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None,
+        };
 
         {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                    depth_slice: None,
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-                multiview_mask: None,
-            });
+            let mut renderpass = command_encoder.begin_render_pass(&render_pass_descriptor);
+            renderpass.set_pipeline(&self.render_pipeline);
 
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-            render_pass.set_bind_group(2, &self.tf_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
+            // Quads
+            renderpass.set_bind_group(0, &self.quad_material.bind_group, &[]);
+            renderpass.set_vertex_buffer(0, self.quad_mesh.buffer.slice(0..self.quad_mesh.offset));
+            renderpass.set_index_buffer(
+                self.quad_mesh.buffer.slice(self.quad_mesh.offset..),
+                wgpu::IndexFormat::Uint16,
+            );
+
+            let mut offset: usize = 0;
+            for i in 0..quads.len() {
+                renderpass.set_bind_group(
+                    1,
+                    &(self.ubo.as_ref().unwrap()).bind_groups[offset + i],
+                    &[],
+                );
+                renderpass.draw_indexed(0..6, 0, 0..1);
+            }
+
+            // Triangles
+            renderpass.set_bind_group(0, &self.triangle_material.bind_group, &[]);
+            renderpass.set_vertex_buffer(0, self.triangle_mesh.slice(..));
+            offset = quads.len();
+            for i in 0..tris.len() {
+                renderpass.set_bind_group(
+                    1,
+                    &(self.ubo.as_ref().unwrap()).bind_groups[offset + i],
+                    &[],
+                );
+                renderpass.draw(0..3, 0..5);
+            }
         }
+        self.queue.submit(std::iter::once(command_encoder.finish()));
+        self.device.poll(wgpu::Maintain::wait());
 
-        self.queue.submit(iter::once(encoder.finish()));
-        output.present();
+        drawable.present();
 
         Ok(())
     }
 }
 
-pub struct App {
-    #[cfg(target_arch = "wasm32")]
-    proxy: Option<winit::event_loop::EventLoopProxy<State>>,
-    state: Option<State>,
-}
+async fn run() {
+    let mut glfw = glfw::init(fail_on_errors!()).unwrap();
+    glfw.window_hint(WindowHint::ClientApi(ClientApiHint::NoApi));
+    let (mut window, events) = glfw
+        .create_window(800, 600, "It's WGPU time.", glfw::WindowMode::Windowed)
+        .unwrap();
 
-impl App {
-    pub fn new(#[cfg(target_arch = "wasm32")] event_loop: &EventLoop<State>) -> Self {
-        #[cfg(target_arch = "wasm32")]
-        let proxy = Some(event_loop.create_proxy());
-        Self {
-            state: None,
-            #[cfg(target_arch = "wasm32")]
-            proxy,
-        }
-    }
-}
+    let mut state = State::new(&mut window).await;
 
-impl ApplicationHandler<State> for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        #[allow(unused_mut)]
-        let mut window_attributes = Window::default_attributes();
+    state.window.set_framebuffer_size_polling(true);
+    state.window.set_key_polling(true);
+    state.window.set_mouse_button_polling(true);
+    state.window.set_pos_polling(true);
 
-        #[cfg(target_arch = "wasm32")]
-        {
-            use wasm_bindgen::JsCast;
-            use winit::platform::web::WindowAttributesExtWebSys;
+    // Build world
+    let mut world = World::new();
+    // world.tris.push(Object {
+    //     position: glm::Vec3::new(0.0, 0.0, 0.0),
+    //     angle: 0.0,
+    //     vel: 0.000,
+    // });
+    // world.tris.push(Object {
+    //     position: glm::Vec3::new(0.0, 0.0, 0.0),
+    //     angle: 0.8,
+    //     vel: 0.002,
+    // });
+    world.quads.push(Object {
+        position: glm::Vec3::new(0.0, 0.0, 0.0),
+        angle: 0.0,
+        vel: 0.0,
+    });
+    state.build_ubos_for_objects(3);
 
-            const CANVAS_ID: &str = "canvas";
+    while !state.window.should_close() {
+        glfw.poll_events();
 
-            let window = wgpu::web_sys::window().unwrap_throw();
-            let document = window.document().unwrap_throw();
-            let canvas = document.get_element_by_id(CANVAS_ID).unwrap_throw();
-            let html_canvas_element = canvas.unchecked_into();
-            window_attributes = window_attributes.with_canvas(Some(html_canvas_element));
-        }
+        world.update(16.67);
 
-        let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            // If we are not on web we can use pollster to
-            // await the
-            self.state = Some(pollster::block_on(State::new(window)).unwrap());
-        }
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            if let Some(proxy) = self.proxy.take() {
-                wasm_bindgen_futures::spawn_local(async move {
-                    assert!(
-                        proxy
-                            .send_event(
-                                State::new(window)
-                                    .await
-                                    .expect("Unable to create canvas!!!")
-                            )
-                            .is_ok()
-                    )
-                });
-            }
-        }
-    }
-
-    #[allow(unused_mut)]
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
-        #[cfg(target_arch = "wasm32")]
-        {
-            event.window.request_redraw();
-            event.resize(
-                event.window.inner_size().width,
-                event.window.inner_size().height,
-            );
-        }
-        self.state = Some(event);
-    }
-
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _window_id: winit::window::WindowId,
-        event: WindowEvent,
-    ) {
-        let state = match &mut self.state {
-            Some(canvas) => canvas,
-            None => return,
-        };
-
-        match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(size) => state.resize(size.width, size.height),
-            WindowEvent::RedrawRequested => {
-                state.update();
-                match state.render() {
-                    Ok(_) => {}
-                    Err(e) => {
-                        // Log the error and exit gracefully
-                        log::error!("{e}");
-                        event_loop.exit();
-                    }
+        for (_, event) in glfw::flush_messages(&events) {
+            match event {
+                //Hit escape
+                glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
+                    state.window.set_should_close(true)
                 }
-            }
-            WindowEvent::MouseInput { state, button, .. } => match (button, state.is_pressed()) {
-                (MouseButton::Left, true) => {}
-                (MouseButton::Left, false) => {}
+
+                //Window was moved
+                glfw::WindowEvent::Pos(..) => {
+                    state.update_surface();
+                    state.resize(state.size);
+                }
+
+                //Window was resized
+                glfw::WindowEvent::FramebufferSize(width, height) => {
+                    state.update_surface();
+                    state.resize((width, height));
+                }
                 _ => {}
-            },
-            WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
-                        physical_key: PhysicalKey::Code(code),
-                        state: key_state,
-                        ..
-                    },
-                ..
-            } => state.handle_key(event_loop, code, key_state.is_pressed()),
-            _ => {}
+            }
+        }
+
+        match state.render(&world.quads, &world.tris) {
+            Ok(_) => {}
+            Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                state.update_surface();
+                state.resize(state.size);
+            }
+            Err(e) => eprintln!("{:?}", e),
         }
     }
 }
 
-pub fn run() -> anyhow::Result<()> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        env_logger::init();
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        console_log::init_with_level(log::Level::Info).unwrap_throw();
-    }
-
-    let event_loop = EventLoop::with_user_event().build()?;
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let mut app = App::new();
-        event_loop.run_app(&mut app)?;
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        let app = App::new(&event_loop);
-        event_loop.spawn_app(app);
-    }
-
-    Ok(())
-}
-
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen(start)]
-pub fn run_web() -> Result<(), wasm_bindgen::JsValue> {
-    console_error_panic_hook::set_once();
-    run().unwrap_throw();
-
-    Ok(())
-}
-
-fn main() -> Result<(), anyhow::Error> {
-    run()
+fn main() {
+    pollster::block_on(run());
 }

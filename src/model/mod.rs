@@ -1,2 +1,1 @@
-pub mod game_object;
-pub mod world;
+pub mod game_objects;

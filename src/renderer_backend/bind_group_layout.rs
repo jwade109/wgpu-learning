@@ -5,9 +5,9 @@ pub struct Builder<'a> {
 
 impl<'a> Builder<'a> {
     pub fn new(device: &'a wgpu::Device) -> Self {
-        Self {
+        Builder {
             entries: Vec::new(),
-            device,
+            device: device,
         }
     }
 
@@ -20,9 +20,9 @@ impl<'a> Builder<'a> {
             binding: self.entries.len() as u32,
             visibility: wgpu::ShaderStages::FRAGMENT,
             ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                view_dimension: wgpu::TextureViewDimension::D2,
                 multisampled: false,
+                view_dimension: wgpu::TextureViewDimension::D2,
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
             },
             count: None,
         });
@@ -35,12 +35,25 @@ impl<'a> Builder<'a> {
         });
     }
 
+    pub fn add_ubo(&mut self) {
+        self.entries.push(wgpu::BindGroupLayoutEntry {
+            binding: self.entries.len() as u32,
+            visibility: wgpu::ShaderStages::VERTEX,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        });
+    }
+
     pub fn build(&mut self, label: &str) -> wgpu::BindGroupLayout {
         let layout = self
             .device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some(label),
                 entries: &self.entries,
+                label: Some(label),
             });
 
         self.reset();
