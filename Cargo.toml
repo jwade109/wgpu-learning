@@ -1,0 +1,21 @@
+[package]
+name = "wgpu-shenanigans"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0"
+winit = { version = "0.30" }
+env_logger = "0.10"
+log = "0.4"
+wgpu = { version = "29.0", features = ["glsl"] }
+pollster = "0.3"
+naga = "*"
+bytemuck = { version = "1.24", features = [ "derive" ] }
+cgmath = "0.18"
+glm = "*"
+
+[dependencies.image]
+version = "0.24"
+default-features = false
+features = ["png", "jpeg"]
