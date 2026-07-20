@@ -90,7 +90,7 @@ pub fn make_triangle(device: &wgpu::Device) -> Mesh {
 }
 
 pub fn make_quad(device: &wgpu::Device) -> Mesh {
-    let w = 0.8;
+    let w = 1.0;
 
     let vertices: [Vertex; 4] = [
         Vertex {

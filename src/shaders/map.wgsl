@@ -1,3 +1,10 @@
+struct UniformData {
+    mouse_pos: vec2<f32>,
+    time: f32,
+}
+
+@group(2) @binding(0) var<uniform> uniform_data: UniformData;
+
 struct Vertex {
     @location(0) position: vec3<f32>,
 };
@@ -49,15 +56,16 @@ fn sinusoid(p: vec2<f32>) -> f32 {
 @fragment
 fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
 
-    let p = in.position.xy;
+    let pix = 10.0;
+    let p = floor(in.position.xy / pix) * pix;
 
     let p1 = vec2<f32>(700.0, 800.0);
     let p2 = vec2<f32>(1500.0, 1200.0);
     let p3 = vec2<f32>(1700.0, 600.0);
 
-    let zp = hill(p, vec2<f32>(400.0, 400.0), 100.0) +
-             hill(p, vec2<f32>(1400.0, 700.0), 60.0) +
-             range(p, p1, p2, 60.0) +
+    let zp = hill(p, uniform_data.mouse_pos, 60.0) +
+             hill(p, vec2<f32>(1400.0, 700.0), 45.0) +
+             range(p, p1, p2, 53.0) +
              range(p, p2, p3, 40.0);
              // hill(p, vec2<f32>(800.0, 1100.0), 85.0);
 
@@ -76,7 +84,9 @@ fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
     var g = color;
     var b = 1.0;
 
-    if (z < 25.0)
+    let tide_level = 20.0 + 3.0 * sin(uniform_data.time / 3.0);
+
+    if (z < tide_level)
     {
         // in the ocean!
         r = color;
@@ -90,9 +100,10 @@ fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
         b = color * 0.5;
     }
 
-    let point_of_interest = vec2<f32>(1300.0, 900);
+    // let point_of_interest = vec2<f32>(1300.0, 900);
+    let point_of_interest = uniform_data.mouse_pos;
 
-    let sdf_d = sdf_circle(p, point_of_interest, 6.0);
+    let sdf_d = sdf_circle(p, point_of_interest, 4.0);
     let sdf_line = sdf_capsule(p, p1, p2, 3.0);
 
     if (sdf_d < 0.0)
@@ -106,6 +117,20 @@ fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
     {
         r = 1.0;
         g = 0.5;
+        b = 0.3;
+    }
+
+    if (z > 49.5 && z < 50.5)
+    {
+        r = 0.6;
+        g = 0.3;
+        b = 0.3;
+    }
+
+    if (z > 29.5 && z < 30.5)
+    {
+        r = 0.6;
+        g = 0.3;
         b = 0.3;
     }
 

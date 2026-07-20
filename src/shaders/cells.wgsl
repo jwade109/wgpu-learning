@@ -1,5 +1,12 @@
 @group(1) @binding(0) var<uniform> model: mat4x4<f32>;
 
+struct UniformData {
+    mouse_pos: vec2<f32>,
+    time: f32,
+}
+
+@group(2) @binding(0) var<uniform> uniform_data: UniformData;
+
 struct Vertex {
     @location(0) position: vec3<f32>,
 };
@@ -32,16 +39,29 @@ fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
     let k = 5.0;
     var dmin = 10000000000.0;
 
-    let pix = 10.0;
+    let pix = 6.0;
 
     let p = floor(in.position.xy / pix) * pix;
 
-    for (var i = 0; i < 70; i += 1)
+    for (var i = 0; i < 43; i += 1)
     {
-        let x = rand(f32(i)) * 2500;
-        let y = rand(f32(i + 747457)) * 1200;
+        var x = rand(f32(i)) * 2500;
+        var y = rand(f32(i + 747457)) * 1200;
+
+        let period = (rand(f32(i) * 90275) * 5.0) + 2.0;
+
+        var dx = cos(uniform_data.time / period) * 200.0;
+        var dy = sin(uniform_data.time / period) * 200.0;
+
+        if i == 0 {
+            x = uniform_data.mouse_pos.x;
+            y = uniform_data.mouse_pos.y;
+            dx = 0.0;
+            dy = 0.0;
+        }
+
         let r = rand(f32(i + 97212041)) * 100 + 30;
-        let d = length(p - vec2<f32>(x, y)) - r;
+        let d = length(p - vec2<f32>(x + dx, y + dy)) - r;
         dmin = smin(dmin, d, k);
     }
 

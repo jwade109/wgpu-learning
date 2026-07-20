@@ -12,6 +12,7 @@ pollster = "0.4.0"
 glm = "*"
 num-traits = "0.2.19"
 clap = { version = "4.6.2", features = ["derive"] }
+bytemuck = { version = "1.25.2", features = ["derive"] }
 
 [dependencies.image]
 version = "0.25.5"

@@ -5,12 +5,26 @@ mod model;
 use clap::Parser;
 use glm::ext;
 use model::game_objects::Object;
+use wgpu::util::DeviceExt;
 
-use crate::renderer_backend::mesh_builder::Mesh;
+use crate::{
+    model::game_objects::Camera,
+    renderer_backend::{bind_group::Builder, mesh_builder::Mesh},
+};
+
+// We need this for Rust to store our data correctly for the shaders
+#[repr(C)]
+// This is so we can store this in a buffer
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct UniformData {
+    mouse_pos_and_time: [f32; 3],
+    _dummy: [f32; 12],
+}
 
 struct World {
     quads: Vec<Object>,
     tris: Vec<Object>,
+    camera: Camera,
 }
 
 impl World {
@@ -18,20 +32,32 @@ impl World {
         World {
             quads: Vec::new(),
             tris: Vec::new(),
+            camera: Camera::new(),
         }
     }
 
-    fn update(&mut self, dt: f32) {
+    fn update(&mut self, dt: f32, window: &mut glfw::Window) {
         for i in 0..self.tris.len() {
             self.tris[i].angle = self.tris[i].angle + self.tris[i].vel * dt;
             if self.tris[i].angle > 360.0 {
                 self.tris[i].angle -= 360.0;
             }
         }
+
+        // let pos = window.get_cursor_pos();
+        // window.set_cursor_pos(400.0, 400.0);
+        // let dx = (-40.0 * (pos.0 - 400.0) / 400.0) as f32;
+        // let dy = (-40.0 * (pos.1 - 400.0) / 400.0) as f32;
+
+        // self.camera.spin(dx, dy);
     }
 }
 
 struct State<'a> {
+    time: f32,
+    paused: bool,
+    mouse_pos_smoothed: [f32; 2],
+
     instance: wgpu::Instance,
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
@@ -43,6 +69,10 @@ struct State<'a> {
     triangle: MeshWithMaterial,
     quad: MeshWithMaterial,
     ubo: Option<UBO>,
+
+    uniform_buffer: wgpu::Buffer,
+    uniform_bind_group_layout: wgpu::BindGroupLayout,
+    uniform_bind_group: wgpu::BindGroup,
 }
 
 struct MeshWithMaterial {
@@ -117,6 +147,32 @@ impl<'a> State<'a> {
             ubo_bind_group_layout = builder.build("UBO Bind Group Layout");
         }
 
+        let uniform_data = UniformData {
+            mouse_pos_and_time: [450.0, 360.0, 0.0],
+            _dummy: Default::default(),
+        };
+
+        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&[uniform_data]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let uniform_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("uniform_data_bind_group"),
+            });
+
         let render_pipeline = {
             let mut builder = pipeline::Builder::new(&device);
             builder.set_shader_module(shader_path, "vs_main", "fs_main");
@@ -124,6 +180,7 @@ impl<'a> State<'a> {
             builder.add_vertex_buffer_layout(mesh_builder::Vertex::get_layout());
             builder.add_bind_group_layout(&material_bind_group_layout);
             builder.add_bind_group_layout(&ubo_bind_group_layout);
+            builder.add_bind_group_layout(&uniform_bind_group_layout);
             builder.build("Render Pipeline")
         };
 
@@ -142,7 +199,17 @@ impl<'a> State<'a> {
             &material_bind_group_layout,
         );
 
+        let uniform_bind_group = {
+            let mut builder = Builder::new(&device);
+            builder.set_layout(&uniform_bind_group_layout);
+            builder.add_buffer(&uniform_buffer, 0);
+            builder.build("uniform buffer")
+        };
+
         Self {
+            time: 0.0,
+            paused: false,
+            mouse_pos_smoothed: [0.0, 0.0],
             instance,
             window,
             surface,
@@ -160,6 +227,9 @@ impl<'a> State<'a> {
                 material: quad_material,
             },
             ubo: None,
+            uniform_buffer,
+            uniform_bind_group_layout,
+            uniform_bind_group,
         }
     }
 
@@ -195,6 +265,30 @@ impl<'a> State<'a> {
         tris: &Vec<Object>,
     ) -> Result<(), wgpu::SurfaceError> {
         self.device.poll(wgpu::Maintain::wait());
+
+        let mouse_pos = self.window.get_cursor_pos();
+
+        self.mouse_pos_smoothed[0] += (mouse_pos.0 as f32 - self.mouse_pos_smoothed[0]) * 0.06;
+        self.mouse_pos_smoothed[1] += (mouse_pos.1 as f32 - self.mouse_pos_smoothed[1]) * 0.06;
+
+        let uniform_data = UniformData {
+            mouse_pos_and_time: [
+                self.mouse_pos_smoothed[0],
+                self.mouse_pos_smoothed[1],
+                self.time,
+            ],
+            _dummy: Default::default(),
+        };
+
+        if !self.paused {
+            self.time += 0.005;
+        }
+
+        self.queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[uniform_data]),
+        );
 
         // Upload
         let mut offset: u64 = 0;
@@ -270,6 +364,8 @@ impl<'a> State<'a> {
             let mut renderpass = command_encoder.begin_render_pass(&render_pass_descriptor);
             renderpass.set_pipeline(&self.render_pipeline);
 
+            renderpass.set_bind_group(2, &self.uniform_bind_group, &[]);
+
             // Quads
             renderpass.set_bind_group(0, &self.quad.material.bind_group, &[]);
             renderpass.set_vertex_buffer(0, self.quad.mesh.vertex_buffer());
@@ -333,6 +429,7 @@ async fn run() {
     state.window.set_key_polling(true);
     state.window.set_mouse_button_polling(true);
     state.window.set_pos_polling(true);
+    // state.window.set_cursor_mode(glfw::CursorMode::Hidden);
 
     // Build world
     let mut world = World::new();
@@ -351,18 +448,22 @@ async fn run() {
         angle: 0.0,
         vel: 0.0,
     });
+
     state.build_ubos_for_objects(3);
 
     while !state.window.should_close() {
         glfw.poll_events();
 
-        world.update(16.67);
+        world.update(16.67, state.window);
 
         for (_, event) in glfw::flush_messages(&events) {
             match event {
                 //Hit escape
                 glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
                     state.window.set_should_close(true)
+                }
+                glfw::WindowEvent::Key(Key::Space, _, Action::Press, _) => {
+                    state.paused ^= true;
                 }
 
                 //Window was moved
