@@ -2,8 +2,11 @@ use glfw::{fail_on_errors, Action, ClientApiHint, Key, Window, WindowHint};
 mod renderer_backend;
 use renderer_backend::{bind_group_layout, material::Material, mesh_builder, pipeline, ubo::UBO};
 mod model;
+use clap::Parser;
 use glm::ext;
 use model::game_objects::Object;
+
+use crate::renderer_backend::mesh_builder::Mesh;
 
 struct World {
     quads: Vec<Object>,
@@ -37,15 +40,18 @@ struct State<'a> {
     size: (i32, i32),
     window: &'a mut Window,
     render_pipeline: wgpu::RenderPipeline,
-    triangle_mesh: wgpu::Buffer,
-    quad_mesh: mesh_builder::Mesh,
-    triangle_material: Material,
-    quad_material: Material,
+    triangle: MeshWithMaterial,
+    quad: MeshWithMaterial,
     ubo: Option<UBO>,
 }
 
+struct MeshWithMaterial {
+    mesh: Mesh,
+    material: Material,
+}
+
 impl<'a> State<'a> {
-    async fn new(window: &'a mut Window) -> Self {
+    async fn new(window: &'a mut Window, shader_path: &str) -> Self {
         let size = window.get_framebuffer_size();
 
         let instance_descriptor = wgpu::InstanceDescriptor {
@@ -93,7 +99,7 @@ impl<'a> State<'a> {
         };
         surface.configure(&device, &config);
 
-        let triangle_buffer = mesh_builder::make_triangle(&device);
+        let triangle_mesh = mesh_builder::make_triangle(&device);
 
         let quad_mesh = mesh_builder::make_quad(&device);
 
@@ -111,26 +117,25 @@ impl<'a> State<'a> {
             ubo_bind_group_layout = builder.build("UBO Bind Group Layout");
         }
 
-        let render_pipeline: wgpu::RenderPipeline;
-        {
+        let render_pipeline = {
             let mut builder = pipeline::Builder::new(&device);
-            builder.set_shader_module("shaders/shader.wgsl", "vs_main", "fs_main");
+            builder.set_shader_module(shader_path, "vs_main", "fs_main");
             builder.set_pixel_format(config.format);
             builder.add_vertex_buffer_layout(mesh_builder::Vertex::get_layout());
             builder.add_bind_group_layout(&material_bind_group_layout);
             builder.add_bind_group_layout(&ubo_bind_group_layout);
-            render_pipeline = builder.build("Render Pipeline");
-        }
+            builder.build("Render Pipeline")
+        };
 
         let triangle_material = Material::new(
-            "../img/winry.jpg",
+            "img/pod.jpg",
             &device,
             &queue,
             "Triangle Material",
             &material_bind_group_layout,
         );
         let quad_material = Material::new(
-            "../img/satin.jpg",
+            "img/invincible.jpg",
             &device,
             &queue,
             "Quad Material",
@@ -146,10 +151,14 @@ impl<'a> State<'a> {
             config,
             size,
             render_pipeline,
-            triangle_mesh: triangle_buffer,
-            quad_mesh,
-            triangle_material: triangle_material,
-            quad_material: quad_material,
+            triangle: MeshWithMaterial {
+                mesh: triangle_mesh,
+                material: triangle_material,
+            },
+            quad: MeshWithMaterial {
+                mesh: quad_mesh,
+                material: quad_material,
+            },
             ubo: None,
         }
     }
@@ -262,12 +271,10 @@ impl<'a> State<'a> {
             renderpass.set_pipeline(&self.render_pipeline);
 
             // Quads
-            renderpass.set_bind_group(0, &self.quad_material.bind_group, &[]);
-            renderpass.set_vertex_buffer(0, self.quad_mesh.buffer.slice(0..self.quad_mesh.offset));
-            renderpass.set_index_buffer(
-                self.quad_mesh.buffer.slice(self.quad_mesh.offset..),
-                wgpu::IndexFormat::Uint16,
-            );
+            renderpass.set_bind_group(0, &self.quad.material.bind_group, &[]);
+            renderpass.set_vertex_buffer(0, self.quad.mesh.vertex_buffer());
+            renderpass
+                .set_index_buffer(self.quad.mesh.index_buffer(), self.quad.mesh.index_format());
 
             let mut offset: usize = 0;
             for i in 0..quads.len() {
@@ -280,8 +287,13 @@ impl<'a> State<'a> {
             }
 
             // Triangles
-            renderpass.set_bind_group(0, &self.triangle_material.bind_group, &[]);
-            renderpass.set_vertex_buffer(0, self.triangle_mesh.slice(..));
+            renderpass.set_bind_group(0, &self.triangle.material.bind_group, &[]);
+            renderpass.set_vertex_buffer(0, self.triangle.mesh.vertex_buffer());
+            renderpass.set_index_buffer(
+                self.triangle.mesh.index_buffer(),
+                self.triangle.mesh.index_format(),
+            );
+
             offset = quads.len();
             for i in 0..tris.len() {
                 renderpass.set_bind_group(
@@ -301,14 +313,21 @@ impl<'a> State<'a> {
     }
 }
 
+#[derive(Parser)]
+struct Args {
+    shader_path: String,
+}
+
 async fn run() {
+    let args = Args::parse();
+
     let mut glfw = glfw::init(fail_on_errors!()).unwrap();
     glfw.window_hint(WindowHint::ClientApi(ClientApiHint::NoApi));
     let (mut window, events) = glfw
         .create_window(800, 600, "It's WGPU time.", glfw::WindowMode::Windowed)
         .unwrap();
 
-    let mut state = State::new(&mut window).await;
+    let mut state = State::new(&mut window, &args.shader_path).await;
 
     state.window.set_framebuffer_size_polling(true);
     state.window.set_key_polling(true);
@@ -317,11 +336,11 @@ async fn run() {
 
     // Build world
     let mut world = World::new();
-    // world.tris.push(Object {
-    //     position: glm::Vec3::new(0.0, 0.0, 0.0),
-    //     angle: 0.0,
-    //     vel: 0.000,
-    // });
+    world.tris.push(Object {
+        position: glm::Vec3::new(0.0, 0.0, 0.0),
+        angle: 0.0,
+        vel: 0.000,
+    });
     // world.tris.push(Object {
     //     position: glm::Vec3::new(0.0, 0.0, 0.0),
     //     angle: 0.8,

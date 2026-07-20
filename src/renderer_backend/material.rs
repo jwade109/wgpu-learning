@@ -1,5 +1,3 @@
-use std::env::current_dir;
-
 use super::bind_group;
 
 pub struct Material {
@@ -14,13 +12,7 @@ impl Material {
         label: &str,
         layout: &wgpu::BindGroupLayout,
     ) -> Self {
-        // Get absolute filepath from relative one
-        let mut filepath = current_dir().unwrap();
-        filepath.push("src/");
-        filepath.push(filename);
-        let filepath = filepath.into_os_string().into_string().unwrap();
-
-        let bytes = std::fs::read(filepath).unwrap();
+        let bytes = std::fs::read(filename).unwrap();
         let loaded_image = image::load_from_memory(&bytes).unwrap();
         let converted = loaded_image.to_rgba8();
         use image::GenericImageView;
@@ -82,8 +74,6 @@ impl Material {
         builder.add_material(&view, &sampler);
         let bind_group = builder.build(label);
 
-        Material {
-            bind_group: bind_group,
-        }
+        Material { bind_group }
     }
 }

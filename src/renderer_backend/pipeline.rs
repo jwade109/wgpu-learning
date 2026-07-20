@@ -1,8 +1,7 @@
-use std::env::current_dir;
 use std::fs;
 
 pub struct Builder<'a> {
-    shader_filename: String,
+    shader_filename: Option<String>,
     vertex_entry: String,
     fragment_entry: String,
     pixel_format: wgpu::TextureFormat,
@@ -11,10 +10,19 @@ pub struct Builder<'a> {
     device: &'a wgpu::Device,
 }
 
+fn make_shader_module(device: &wgpu::Device, shader_path: &str, label: &str) -> wgpu::ShaderModule {
+    let source_code = fs::read_to_string(shader_path).expect("Can't read source code!");
+    let desc = wgpu::ShaderModuleDescriptor {
+        label: Some(label),
+        source: wgpu::ShaderSource::Wgsl(source_code.into()),
+    };
+    device.create_shader_module(desc)
+}
+
 impl<'a> Builder<'a> {
     pub fn new(device: &'a wgpu::Device) -> Self {
         Builder {
-            shader_filename: "dummy".to_string(),
+            shader_filename: None,
             vertex_entry: "dummy".to_string(),
             fragment_entry: "dummy".to_string(),
             pixel_format: wgpu::TextureFormat::Rgba8Unorm,
@@ -43,7 +51,7 @@ impl<'a> Builder<'a> {
         vertex_entry: &str,
         fragment_entry: &str,
     ) {
-        self.shader_filename = shader_filename.to_string();
+        self.shader_filename = Some(shader_filename.to_string());
         self.vertex_entry = vertex_entry.to_string();
         self.fragment_entry = fragment_entry.to_string();
     }
@@ -53,30 +61,25 @@ impl<'a> Builder<'a> {
     }
 
     pub fn build(&mut self, label: &str) -> wgpu::RenderPipeline {
-        let mut filepath = current_dir().unwrap();
-        filepath.push("src/");
-        filepath.push(self.shader_filename.as_str());
-        let filepath = filepath.into_os_string().into_string().unwrap();
-        let source_code = fs::read_to_string(filepath).expect("Can't read source code!");
-
-        let shader_module_descriptor = wgpu::ShaderModuleDescriptor {
-            label: Some("Shader Module"),
-            source: wgpu::ShaderSource::Wgsl(source_code.into()),
+        let shader_module = if let Some(path) = &self.shader_filename {
+            Some(make_shader_module(&self.device, &path, "Shader Module"))
+        } else {
+            None
         };
-        let shader_module = self.device.create_shader_module(shader_module_descriptor);
 
-        let pipeline_layout_descriptor = wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &self.bind_group_layouts,
-            push_constant_ranges: &[],
+        let pipeline_layout = {
+            let pipeline_layout_descriptor = wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &self.bind_group_layouts,
+                push_constant_ranges: &[],
+            };
+            self.device
+                .create_pipeline_layout(&pipeline_layout_descriptor)
         };
-        let pipeline_layout: wgpu::PipelineLayout = self
-            .device
-            .create_pipeline_layout(&pipeline_layout_descriptor);
 
         let render_targets = [Some(wgpu::ColorTargetState {
             format: self.pixel_format,
-            blend: Some(wgpu::BlendState::REPLACE),
+            blend: Some(wgpu::BlendState::ALPHA_BLENDING),
             write_mask: wgpu::ColorWrites::ALL,
         })];
 
@@ -87,7 +90,7 @@ impl<'a> Builder<'a> {
             cache: None,
 
             vertex: wgpu::VertexState {
-                module: &shader_module,
+                module: shader_module.as_ref().unwrap(),
                 entry_point: Some(&self.vertex_entry),
                 buffers: &self.vertex_buffer_layouts,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
@@ -104,7 +107,7 @@ impl<'a> Builder<'a> {
             },
 
             fragment: Some(wgpu::FragmentState {
-                module: &shader_module,
+                module: shader_module.as_ref().unwrap(),
                 entry_point: Some(&self.fragment_entry),
                 targets: &render_targets,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
