@@ -1,24 +1,25 @@
-@group(1) @binding(0) var<uniform> model: mat4x4<f32>;
+@group(0) @binding(0) var<uniform> uniform_data: UniformData;
 
 struct UniformData {
     mouse_pos: vec2<f32>,
     time: f32,
 }
 
-@group(2) @binding(0) var<uniform> uniform_data: UniformData;
-
 struct Vertex {
     @location(0) position: vec3<f32>,
+    @location(1) color: vec3<f32>,
 };
 
 struct VertexShaderOutput {
     @builtin(position) position: vec4<f32>,
+    @location(0) color: vec3<f32>,
 };
 
 @vertex
 fn vs_main(vertex: Vertex) -> VertexShaderOutput {
     var out: VertexShaderOutput;
-    out.position = model * vec4<f32>(vertex.position, 1.0);
+    out.position = vec4<f32>(vertex.position, 1.0);
+    out.color = vertex.color;
     return out;
 }
 
@@ -41,8 +42,7 @@ fn rgb_to_vec3(r: u32, g: u32, b: u32) -> vec3<f32>
     return vec3<f32>(rf, gf, bf);
 }
 
-@fragment
-fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
+fn get_lava_lamp_color(in: VertexShaderOutput) -> vec4<f32> {
 
     let PURPLE =      rgb_to_vec3(87u,  16u,  110u); // rgb(87, 16, 110);
     let RED =         rgb_to_vec3(188u, 55u,  84u);  // rgb(188, 55, 84);
@@ -138,4 +138,9 @@ fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
 
     // let color = bg_color;
 
+}
+
+@fragment
+fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
+    return mix(vec4<f32>(in.color, 1.0), get_lava_lamp_color(in), 1.0);
 }

@@ -1,9 +1,9 @@
+@group(0) @binding(0) var<uniform> uniform_data: UniformData;
+
 struct UniformData {
     mouse_pos: vec2<f32>,
     time: f32,
 }
-
-@group(2) @binding(0) var<uniform> uniform_data: UniformData;
 
 struct Vertex {
     @location(0) position: vec3<f32>,

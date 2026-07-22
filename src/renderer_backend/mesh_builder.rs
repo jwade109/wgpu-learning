@@ -25,13 +25,12 @@ pub struct Vertex {
     position: Vec3,
     color: Vec3,
     texture_coord: Vec2,
-    barycentric: UVec2,
 }
 
 impl Vertex {
     pub fn get_layout() -> wgpu::VertexBufferLayout<'static> {
-        const ATTRIBUTES: [wgpu::VertexAttribute; 4] =
-            wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Uint32x2];
+        const ATTRIBUTES: [wgpu::VertexAttribute; 3] =
+            wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2];
 
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
@@ -50,24 +49,22 @@ pub fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
 
 pub fn make_triangle(device: &wgpu::Device) -> Mesh {
     let w = 0.8;
+    let color = Vec3::new(1.0, 0.0, 0.0);
     let vertices: [Vertex; 3] = [
         Vertex {
-            position: Vec3::new(-w, -w, 0.0),
-            color: Vec3::new(1.0, 0.0, 0.0),
+            position: Vec3::new(-w, -w, 1.0),
+            color,
             texture_coord: Vec2::new(0.0, 0.0),
-            barycentric: UVec2::new(0, 0),
         },
         Vertex {
             position: Vec3::new(w, -w, 0.0),
-            color: Vec3::new(0.0, 1.0, 0.0),
+            color,
             texture_coord: Vec2::new(1.0, 0.0),
-            barycentric: UVec2::new(0, 1),
         },
         Vertex {
-            position: Vec3::new(0.0, w, 0.0),
-            color: Vec3::new(0.0, 0.0, 1.0),
+            position: Vec3::new(0.0, w, 2.0),
+            color,
             texture_coord: Vec2::new(1.0, 1.0),
-            barycentric: UVec2::new(1, 0),
         },
     ];
 
@@ -90,32 +87,28 @@ pub fn make_triangle(device: &wgpu::Device) -> Mesh {
 }
 
 pub fn make_quad(device: &wgpu::Device) -> Mesh {
-    let w = 1.0;
+    let w = 0.85;
 
     let vertices: [Vertex; 4] = [
         Vertex {
-            position: Vec3::new(-w, -w, 0.0),
+            position: Vec3::new(-w, -w, 1.0),
             color: Vec3::new(1.0, 0.0, 0.0),
             texture_coord: Vec2::new(0.0, 0.0),
-            barycentric: UVec2::new(0, 0),
         },
         Vertex {
-            position: Vec3::new(w, -w, 0.0),
+            position: Vec3::new(w, -w, 1.0),
             color: Vec3::new(0.0, 1.0, 1.0),
             texture_coord: Vec2::new(1.0, 0.0),
-            barycentric: UVec2::new(1, 0),
         },
         Vertex {
-            position: Vec3::new(w, w, 0.0),
+            position: Vec3::new(w, w, 1.0),
             color: Vec3::new(0.0, 0.0, 1.0),
             texture_coord: Vec2::new(1.0, 1.0),
-            barycentric: UVec2::new(0, 1),
         },
         Vertex {
-            position: Vec3::new(-w, w, 0.0),
+            position: Vec3::new(-w, w, 1.0),
             color: Vec3::new(1.0, 0.0, 1.0),
             texture_coord: Vec2::new(0.0, 1.0),
-            barycentric: UVec2::new(1, 1),
         },
     ];
     let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];

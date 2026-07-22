@@ -19,8 +19,6 @@ impl Shader {
 }
 
 pub struct Builder<'a> {
-    shader: Shader,
-    pixel_format: wgpu::TextureFormat,
     vertex_buffer_layouts: Vec<wgpu::VertexBufferLayout<'static>>,
     bind_group_layouts: Vec<&'a wgpu::BindGroupLayout>,
     device: &'a wgpu::Device,
@@ -37,17 +35,10 @@ fn make_shader_module(device: &wgpu::Device, shader: &Shader, label: &str) -> wg
 impl<'a> Builder<'a> {
     pub fn new(device: &'a wgpu::Device) -> Self {
         Builder {
-            shader: Shader::default(),
-            pixel_format: wgpu::TextureFormat::Rgba8Unorm,
             vertex_buffer_layouts: Vec::new(),
             bind_group_layouts: Vec::new(),
             device: device,
         }
-    }
-
-    fn reset(&mut self) {
-        self.vertex_buffer_layouts.clear();
-        self.bind_group_layouts.clear();
     }
 
     pub fn add_vertex_buffer_layout(&mut self, layout: wgpu::VertexBufferLayout<'static>) {
@@ -58,16 +49,13 @@ impl<'a> Builder<'a> {
         self.bind_group_layouts.push(layout);
     }
 
-    pub fn set_shader_module(&mut self, shader: Shader) {
-        self.shader = shader;
-    }
-
-    pub fn set_pixel_format(&mut self, pixel_format: wgpu::TextureFormat) {
-        self.pixel_format = pixel_format;
-    }
-
-    pub fn build(&mut self, label: &str) -> wgpu::RenderPipeline {
-        let shader = make_shader_module(&self.device, &self.shader, "Shader Module");
+    pub fn build(
+        self,
+        label: &str,
+        shader: &Shader,
+        pixel_format: wgpu::TextureFormat,
+    ) -> wgpu::RenderPipeline {
+        let shader_module = make_shader_module(&self.device, shader, "Shader Module");
 
         let pipeline_layout = {
             let pipeline_layout_descriptor = wgpu::PipelineLayoutDescriptor {
@@ -79,12 +67,6 @@ impl<'a> Builder<'a> {
                 .create_pipeline_layout(&pipeline_layout_descriptor)
         };
 
-        let render_targets = [Some(wgpu::ColorTargetState {
-            format: self.pixel_format,
-            blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-            write_mask: wgpu::ColorWrites::ALL,
-        })];
-
         let render_pipeline_descriptor = wgpu::RenderPipelineDescriptor {
             label: Some(label),
             layout: Some(&pipeline_layout),
@@ -92,8 +74,8 @@ impl<'a> Builder<'a> {
             cache: None,
 
             vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some(&self.shader.vertex_entry),
+                module: &shader_module,
+                entry_point: Some(&shader.vertex_entry),
                 buffers: &self.vertex_buffer_layouts,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
@@ -109,9 +91,13 @@ impl<'a> Builder<'a> {
             },
 
             fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some(&self.shader.fragment_entry),
-                targets: &render_targets,
+                module: &shader_module,
+                entry_point: Some(&shader.fragment_entry),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: pixel_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
 
@@ -127,8 +113,6 @@ impl<'a> Builder<'a> {
         let pipeline = self
             .device
             .create_render_pipeline(&render_pipeline_descriptor);
-
-        self.reset();
 
         pipeline
     }

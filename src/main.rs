@@ -65,20 +65,19 @@ struct State<'a> {
     config: wgpu::SurfaceConfiguration,
     size: (i32, i32),
     window: &'a mut Window,
-    render_pipeline: wgpu::RenderPipeline,
+    lava_lamp_pipeline: wgpu::RenderPipeline,
+    map_pipeline: wgpu::RenderPipeline,
+    texture_pipeline: wgpu::RenderPipeline,
     triangle: MeshWithMaterial,
     quad: MeshWithMaterial,
     ubo: Option<UBO>,
 
     uniform_data_ubo: SingleUBO,
+
+    pipeline_selector: PipelineSelector,
 }
 
-fn set_mesh_in_render_pass(
-    rp: &mut wgpu::RenderPass,
-    mwm: &MeshWithMaterial,
-    bind_group_index: u32,
-) {
-    rp.set_bind_group(bind_group_index, &mwm.material.bind_group, &[]);
+fn set_mesh_in_render_pass(rp: &mut wgpu::RenderPass, mwm: &MeshWithMaterial) {
     rp.set_vertex_buffer(0, mwm.mesh.vertex_buffer());
     rp.set_index_buffer(mwm.mesh.index_buffer(), mwm.mesh.index_format());
 }
@@ -86,6 +85,13 @@ fn set_mesh_in_render_pass(
 struct MeshWithMaterial {
     mesh: Mesh,
     material: Material,
+}
+
+#[derive(PartialEq, Eq)]
+enum PipelineSelector {
+    Lava,
+    Map,
+    Texture,
 }
 
 impl<'a> State<'a> {
@@ -181,15 +187,32 @@ impl<'a> State<'a> {
                 label: Some("uniform_data_bind_group"),
             });
 
-        let render_pipeline = {
+        let lava_lamp_pipeline = {
             let mut builder = pipeline::Builder::new(&device);
-            builder.set_shader_module(Shader::from_path(shader_path));
-            builder.set_pixel_format(config.format);
+            let shader = Shader::from_path("src/shaders/cells.wgsl");
             builder.add_vertex_buffer_layout(mesh_builder::Vertex::get_layout());
-            builder.add_bind_group_layout(&material_bind_group_layout);
-            builder.add_bind_group_layout(&ubo_bind_group_layout);
             builder.add_bind_group_layout(&uniform_bind_group_layout);
-            builder.build("Render Pipeline")
+            builder.add_bind_group_layout(&ubo_bind_group_layout);
+            builder.build("Lava Lamp Pipeline", &shader, config.format)
+        };
+
+        let map_pipeline = {
+            let mut builder = pipeline::Builder::new(&device);
+            let shader = Shader::from_path("src/shaders/map.wgsl");
+            builder.add_vertex_buffer_layout(mesh_builder::Vertex::get_layout());
+            builder.add_bind_group_layout(&uniform_bind_group_layout);
+            builder.add_bind_group_layout(&ubo_bind_group_layout);
+            builder.build("Map Pipeline", &shader, config.format)
+        };
+
+        let texture_pipeline = {
+            let mut builder = pipeline::Builder::new(&device);
+            let shader = Shader::from_path("src/shaders/texture.wgsl");
+            builder.add_vertex_buffer_layout(mesh_builder::Vertex::get_layout());
+            builder.add_bind_group_layout(&uniform_bind_group_layout);
+            builder.add_bind_group_layout(&ubo_bind_group_layout);
+            builder.add_bind_group_layout(&material_bind_group_layout);
+            builder.build("Texture Pipeline", &shader, config.format)
         };
 
         let triangle_material = Material::new(
@@ -226,7 +249,9 @@ impl<'a> State<'a> {
             queue,
             config,
             size,
-            render_pipeline,
+            lava_lamp_pipeline,
+            map_pipeline,
+            texture_pipeline,
             triangle: MeshWithMaterial {
                 mesh: triangle_mesh,
                 material: triangle_material,
@@ -241,6 +266,16 @@ impl<'a> State<'a> {
                 buffer: uniform_buffer,
                 bind_group: uniform_bind_group,
             },
+
+            pipeline_selector: PipelineSelector::Lava,
+        }
+    }
+
+    fn get_current_pipeline(&self) -> &wgpu::RenderPipeline {
+        match self.pipeline_selector {
+            PipelineSelector::Lava => &self.lava_lamp_pipeline,
+            PipelineSelector::Map => &self.map_pipeline,
+            PipelineSelector::Texture => &self.texture_pipeline,
         }
     }
 
@@ -348,43 +383,53 @@ impl<'a> State<'a> {
         }
 
         let drawable = self.surface.get_current_texture()?;
+        let render_pass_descriptor = wgpu::RenderPassDescriptor {
+            label: Some("Render Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &drawable
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default()),
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 0.75,
+                        g: 0.5,
+                        b: 0.25,
+                        a: 1.0,
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None,
+        };
 
-        let mut command_encoder = {
+        let mut command_encoder =
             self.device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("Render Encoder"),
-                })
-        };
+                });
 
         {
-            let render_pass_descriptor = wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &drawable
-                        .texture
-                        .create_view(&wgpu::TextureViewDescriptor::default()),
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.75,
-                            g: 0.5,
-                            b: 0.25,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            };
-
             let mut renderpass = command_encoder.begin_render_pass(&render_pass_descriptor);
-            renderpass.set_pipeline(&self.render_pipeline);
+            renderpass.set_pipeline(self.get_current_pipeline());
 
-            renderpass.set_bind_group(2, &self.uniform_data_ubo.bind_group, &[]);
-
-            set_mesh_in_render_pass(&mut renderpass, &self.quad, 0);
+            match self.pipeline_selector {
+                PipelineSelector::Lava => {
+                    renderpass.set_bind_group(0, &self.uniform_data_ubo.bind_group, &[]);
+                    set_mesh_in_render_pass(&mut renderpass, &self.quad);
+                }
+                PipelineSelector::Map => {
+                    renderpass.set_bind_group(0, &self.uniform_data_ubo.bind_group, &[]);
+                    set_mesh_in_render_pass(&mut renderpass, &self.quad);
+                }
+                PipelineSelector::Texture => {
+                    renderpass.set_bind_group(0, &self.uniform_data_ubo.bind_group, &[]);
+                    renderpass.set_bind_group(2, &self.quad.material.bind_group, &[]);
+                    set_mesh_in_render_pass(&mut renderpass, &self.quad);
+                }
+            }
 
             // Quads
 
@@ -400,7 +445,11 @@ impl<'a> State<'a> {
                 renderpass.draw_indexed(0..6, 0, 0..1);
             }
 
-            set_mesh_in_render_pass(&mut renderpass, &self.triangle, 0);
+            if self.pipeline_selector == PipelineSelector::Texture {
+                renderpass.set_bind_group(2, &self.triangle.material.bind_group, &[]);
+            }
+
+            set_mesh_in_render_pass(&mut renderpass, &self.triangle);
 
             offset = quads.len();
             for i in 0..tris.len() {
@@ -411,7 +460,7 @@ impl<'a> State<'a> {
                     .flatten()
                     .unwrap();
                 renderpass.set_bind_group(1, bg, &[]);
-                renderpass.draw(0..3, 0..5);
+                renderpass.draw(0..3, 0..1);
             }
         }
         self.queue.submit(std::iter::once(command_encoder.finish()));
@@ -479,6 +528,13 @@ async fn run() {
                 }
                 glfw::WindowEvent::Key(Key::Space, _, Action::Press, _) => {
                     state.paused ^= true;
+                }
+                glfw::WindowEvent::Key(Key::Right, _, Action::Press, _) => {
+                    state.pipeline_selector = match state.pipeline_selector {
+                        PipelineSelector::Lava => PipelineSelector::Map,
+                        PipelineSelector::Map => PipelineSelector::Texture,
+                        PipelineSelector::Texture => PipelineSelector::Lava,
+                    };
                 }
 
                 //Window was moved
