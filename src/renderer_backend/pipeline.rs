@@ -1,20 +1,35 @@
 use std::fs;
 
+#[derive(Default)]
+pub struct Shader {
+    pub contents: String,
+    pub vertex_entry: String,
+    pub fragment_entry: String,
+}
+
+impl Shader {
+    pub fn from_path(path: &str) -> Self {
+        let source_code = fs::read_to_string(path).expect("Can't read source code!");
+        Self {
+            contents: source_code,
+            vertex_entry: "vs_main".to_string(),
+            fragment_entry: "fs_main".to_string(),
+        }
+    }
+}
+
 pub struct Builder<'a> {
-    shader_filename: Option<String>,
-    vertex_entry: String,
-    fragment_entry: String,
+    shader: Shader,
     pixel_format: wgpu::TextureFormat,
     vertex_buffer_layouts: Vec<wgpu::VertexBufferLayout<'static>>,
     bind_group_layouts: Vec<&'a wgpu::BindGroupLayout>,
     device: &'a wgpu::Device,
 }
 
-fn make_shader_module(device: &wgpu::Device, shader_path: &str, label: &str) -> wgpu::ShaderModule {
-    let source_code = fs::read_to_string(shader_path).expect("Can't read source code!");
+fn make_shader_module(device: &wgpu::Device, shader: &Shader, label: &str) -> wgpu::ShaderModule {
     let desc = wgpu::ShaderModuleDescriptor {
         label: Some(label),
-        source: wgpu::ShaderSource::Wgsl(source_code.into()),
+        source: wgpu::ShaderSource::Wgsl(shader.contents.clone().into()),
     };
     device.create_shader_module(desc)
 }
@@ -22,9 +37,7 @@ fn make_shader_module(device: &wgpu::Device, shader_path: &str, label: &str) -> 
 impl<'a> Builder<'a> {
     pub fn new(device: &'a wgpu::Device) -> Self {
         Builder {
-            shader_filename: None,
-            vertex_entry: "dummy".to_string(),
-            fragment_entry: "dummy".to_string(),
+            shader: Shader::default(),
             pixel_format: wgpu::TextureFormat::Rgba8Unorm,
             vertex_buffer_layouts: Vec::new(),
             bind_group_layouts: Vec::new(),
@@ -45,15 +58,8 @@ impl<'a> Builder<'a> {
         self.bind_group_layouts.push(layout);
     }
 
-    pub fn set_shader_module(
-        &mut self,
-        shader_filename: &str,
-        vertex_entry: &str,
-        fragment_entry: &str,
-    ) {
-        self.shader_filename = Some(shader_filename.to_string());
-        self.vertex_entry = vertex_entry.to_string();
-        self.fragment_entry = fragment_entry.to_string();
+    pub fn set_shader_module(&mut self, shader: Shader) {
+        self.shader = shader;
     }
 
     pub fn set_pixel_format(&mut self, pixel_format: wgpu::TextureFormat) {
@@ -61,11 +67,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn build(&mut self, label: &str) -> wgpu::RenderPipeline {
-        let shader_module = if let Some(path) = &self.shader_filename {
-            Some(make_shader_module(&self.device, &path, "Shader Module"))
-        } else {
-            None
-        };
+        let shader = make_shader_module(&self.device, &self.shader, "Shader Module");
 
         let pipeline_layout = {
             let pipeline_layout_descriptor = wgpu::PipelineLayoutDescriptor {
@@ -90,8 +92,8 @@ impl<'a> Builder<'a> {
             cache: None,
 
             vertex: wgpu::VertexState {
-                module: shader_module.as_ref().unwrap(),
-                entry_point: Some(&self.vertex_entry),
+                module: &shader,
+                entry_point: Some(&self.shader.vertex_entry),
                 buffers: &self.vertex_buffer_layouts,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
@@ -107,8 +109,8 @@ impl<'a> Builder<'a> {
             },
 
             fragment: Some(wgpu::FragmentState {
-                module: shader_module.as_ref().unwrap(),
-                entry_point: Some(&self.fragment_entry),
+                module: &shader,
+                entry_point: Some(&self.shader.fragment_entry),
                 targets: &render_targets,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),

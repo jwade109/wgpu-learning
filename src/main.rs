@@ -9,7 +9,7 @@ use wgpu::util::DeviceExt;
 
 use crate::{
     model::game_objects::Camera,
-    renderer_backend::{bind_group::Builder, mesh_builder::Mesh},
+    renderer_backend::{bind_group::Builder, mesh_builder::Mesh, pipeline::Shader, ubo::SingleUBO},
 };
 
 // We need this for Rust to store our data correctly for the shaders
@@ -70,9 +70,17 @@ struct State<'a> {
     quad: MeshWithMaterial,
     ubo: Option<UBO>,
 
-    uniform_buffer: wgpu::Buffer,
-    uniform_bind_group_layout: wgpu::BindGroupLayout,
-    uniform_bind_group: wgpu::BindGroup,
+    uniform_data_ubo: SingleUBO,
+}
+
+fn set_mesh_in_render_pass(
+    rp: &mut wgpu::RenderPass,
+    mwm: &MeshWithMaterial,
+    bind_group_index: u32,
+) {
+    rp.set_bind_group(bind_group_index, &mwm.material.bind_group, &[]);
+    rp.set_vertex_buffer(0, mwm.mesh.vertex_buffer());
+    rp.set_index_buffer(mwm.mesh.index_buffer(), mwm.mesh.index_format());
 }
 
 struct MeshWithMaterial {
@@ -175,7 +183,7 @@ impl<'a> State<'a> {
 
         let render_pipeline = {
             let mut builder = pipeline::Builder::new(&device);
-            builder.set_shader_module(shader_path, "vs_main", "fs_main");
+            builder.set_shader_module(Shader::from_path(shader_path));
             builder.set_pixel_format(config.format);
             builder.add_vertex_buffer_layout(mesh_builder::Vertex::get_layout());
             builder.add_bind_group_layout(&material_bind_group_layout);
@@ -191,6 +199,7 @@ impl<'a> State<'a> {
             "Triangle Material",
             &material_bind_group_layout,
         );
+
         let quad_material = Material::new(
             "img/invincible.jpg",
             &device,
@@ -227,9 +236,11 @@ impl<'a> State<'a> {
                 material: quad_material,
             },
             ubo: None,
-            uniform_buffer,
-            uniform_bind_group_layout,
-            uniform_bind_group,
+
+            uniform_data_ubo: SingleUBO {
+                buffer: uniform_buffer,
+                bind_group: uniform_bind_group,
+            },
         }
     }
 
@@ -250,12 +261,11 @@ impl<'a> State<'a> {
     }
 
     pub fn build_ubos_for_objects(&mut self, object_count: usize) {
-        let ubo_bind_group_layout;
-        {
+        let ubo_bind_group_layout = {
             let mut builder = bind_group_layout::Builder::new(&self.device);
             builder.add_ubo();
-            ubo_bind_group_layout = builder.build("UBO Bind Group Layout");
-        }
+            builder.build("UBO Bind Group Layout")
+        };
         self.ubo = Some(UBO::new(&self.device, object_count, ubo_bind_group_layout));
     }
 
@@ -264,6 +274,12 @@ impl<'a> State<'a> {
         quads: &Vec<Object>,
         tris: &Vec<Object>,
     ) -> Result<(), wgpu::SurfaceError> {
+        let (w, h) = self.window.get_size();
+
+        if w == 0 || h == 0 {
+            return Ok(());
+        }
+
         self.device.poll(wgpu::Maintain::wait());
 
         let mouse_pos = self.window.get_cursor_pos();
@@ -285,118 +301,116 @@ impl<'a> State<'a> {
         }
 
         self.queue.write_buffer(
-            &self.uniform_buffer,
+            &self.uniform_data_ubo.buffer,
             0,
             bytemuck::cast_slice(&[uniform_data]),
         );
 
-        // Upload
-        let mut offset: u64 = 0;
-        for i in 0..quads.len() {
-            let c0 = glm::Vec4::new(1.0, 0.0, 0.0, 0.0);
-            let c1 = glm::Vec4::new(0.0, 1.0, 0.0, 0.0);
-            let c2 = glm::Vec4::new(0.0, 0.0, 1.0, 0.0);
-            let c3 = glm::Vec4::new(0.0, 0.0, 0.0, 1.0);
-            let m1 = glm::Matrix4::new(c0, c1, c2, c3);
-            let m2 = glm::Matrix4::new(c0, c1, c2, c3);
-            let matrix = ext::rotate(&m2, quads[i].angle, glm::Vector3::new(0.0, 0.0, 1.0))
-                * ext::translate(&m1, quads[i].position);
-            self.ubo
-                .as_mut()
-                .unwrap()
-                .upload(offset + i as u64, &matrix, &self.queue);
+        // upload transforms to UBO
+        {
+            let mut offset: u64 = 0;
+            for i in 0..quads.len() {
+                let c0 = glm::Vec4::new(1.0, 0.0, 0.0, 0.0);
+                let c1 = glm::Vec4::new(0.0, 1.0, 0.0, 0.0);
+                let c2 = glm::Vec4::new(0.0, 0.0, 1.0, 0.0);
+                let c3 = glm::Vec4::new(0.0, 0.0, 0.0, 1.0);
+                let m1 = glm::Matrix4::new(c0, c1, c2, c3);
+                let m2 = glm::Matrix4::new(c0, c1, c2, c3);
+                let matrix = ext::rotate(&m2, quads[i].angle, glm::Vector3::new(0.0, 0.0, 1.0))
+                    * ext::translate(&m1, quads[i].position);
+                self.ubo
+                    .as_mut()
+                    .unwrap()
+                    .upload(offset + i as u64, &matrix, &self.queue);
+            }
+
+            offset = quads.len() as u64;
+            for i in 0..tris.len() {
+                let c0 = glm::Vec4::new(1.0, 0.0, 0.0, 0.0);
+                let c1 = glm::Vec4::new(0.0, 1.0, 0.0, 0.0);
+                let c2 = glm::Vec4::new(0.0, 0.0, 1.0, 0.0);
+                let c3 = glm::Vec4::new(0.0, 0.0, 0.0, 1.0);
+                let m1 = glm::Matrix4::new(c0, c1, c2, c3);
+                let m2 = glm::Matrix4::new(c0, c1, c2, c3);
+                let matrix = ext::rotate(&m2, tris[i].angle, glm::Vector3::new(0.0, 0.0, 1.0))
+                    * ext::translate(&m1, tris[i].position);
+                self.ubo
+                    .as_mut()
+                    .unwrap()
+                    .upload(offset + i as u64, &matrix, &self.queue);
+            }
         }
 
-        offset = quads.len() as u64;
-        for i in 0..tris.len() {
-            let c0 = glm::Vec4::new(1.0, 0.0, 0.0, 0.0);
-            let c1 = glm::Vec4::new(0.0, 1.0, 0.0, 0.0);
-            let c2 = glm::Vec4::new(0.0, 0.0, 1.0, 0.0);
-            let c3 = glm::Vec4::new(0.0, 0.0, 0.0, 1.0);
-            let m1 = glm::Matrix4::new(c0, c1, c2, c3);
-            let m2 = glm::Matrix4::new(c0, c1, c2, c3);
-            let matrix = ext::rotate(&m2, tris[i].angle, glm::Vector3::new(0.0, 0.0, 1.0))
-                * ext::translate(&m1, tris[i].position);
-            self.ubo
-                .as_mut()
-                .unwrap()
-                .upload(offset + i as u64, &matrix, &self.queue);
+        {
+            let event = self.queue.submit([]);
+            let maintain = wgpu::Maintain::WaitForSubmissionIndex(event);
+            self.device.poll(maintain);
         }
-
-        let event = self.queue.submit([]);
-        let maintain = wgpu::Maintain::WaitForSubmissionIndex(event);
-        self.device.poll(maintain);
 
         let drawable = self.surface.get_current_texture()?;
-        let image_view_descriptor = wgpu::TextureViewDescriptor::default();
-        let image_view = drawable.texture.create_view(&image_view_descriptor);
 
-        let command_encoder_descriptor = wgpu::CommandEncoderDescriptor {
-            label: Some("Render Encoder"),
-        };
-        let mut command_encoder = self
-            .device
-            .create_command_encoder(&command_encoder_descriptor);
-
-        let color_attachment = wgpu::RenderPassColorAttachment {
-            view: &image_view,
-            resolve_target: None,
-            ops: wgpu::Operations {
-                load: wgpu::LoadOp::Clear(wgpu::Color {
-                    r: 0.75,
-                    g: 0.5,
-                    b: 0.25,
-                    a: 1.0,
-                }),
-                store: wgpu::StoreOp::Store,
-            },
-        };
-
-        let render_pass_descriptor = wgpu::RenderPassDescriptor {
-            label: Some("Render Pass"),
-            color_attachments: &[Some(color_attachment)],
-            depth_stencil_attachment: None,
-            occlusion_query_set: None,
-            timestamp_writes: None,
+        let mut command_encoder = {
+            self.device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Render Encoder"),
+                })
         };
 
         {
+            let render_pass_descriptor = wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &drawable
+                        .texture
+                        .create_view(&wgpu::TextureViewDescriptor::default()),
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.75,
+                            g: 0.5,
+                            b: 0.25,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            };
+
             let mut renderpass = command_encoder.begin_render_pass(&render_pass_descriptor);
             renderpass.set_pipeline(&self.render_pipeline);
 
-            renderpass.set_bind_group(2, &self.uniform_bind_group, &[]);
+            renderpass.set_bind_group(2, &self.uniform_data_ubo.bind_group, &[]);
+
+            set_mesh_in_render_pass(&mut renderpass, &self.quad, 0);
 
             // Quads
-            renderpass.set_bind_group(0, &self.quad.material.bind_group, &[]);
-            renderpass.set_vertex_buffer(0, self.quad.mesh.vertex_buffer());
-            renderpass
-                .set_index_buffer(self.quad.mesh.index_buffer(), self.quad.mesh.index_format());
 
             let mut offset: usize = 0;
             for i in 0..quads.len() {
-                renderpass.set_bind_group(
-                    1,
-                    &(self.ubo.as_ref().unwrap()).bind_groups[offset + i],
-                    &[],
-                );
+                let bg = self
+                    .ubo
+                    .as_ref()
+                    .map(|e| e.bind_group(offset + i))
+                    .flatten()
+                    .unwrap();
+                renderpass.set_bind_group(1, bg, &[]);
                 renderpass.draw_indexed(0..6, 0, 0..1);
             }
 
-            // Triangles
-            renderpass.set_bind_group(0, &self.triangle.material.bind_group, &[]);
-            renderpass.set_vertex_buffer(0, self.triangle.mesh.vertex_buffer());
-            renderpass.set_index_buffer(
-                self.triangle.mesh.index_buffer(),
-                self.triangle.mesh.index_format(),
-            );
+            set_mesh_in_render_pass(&mut renderpass, &self.triangle, 0);
 
             offset = quads.len();
             for i in 0..tris.len() {
-                renderpass.set_bind_group(
-                    1,
-                    &(self.ubo.as_ref().unwrap()).bind_groups[offset + i],
-                    &[],
-                );
+                let bg = self
+                    .ubo
+                    .as_ref()
+                    .map(|e| e.bind_group(offset + i))
+                    .flatten()
+                    .unwrap();
+                renderpass.set_bind_group(1, bg, &[]);
                 renderpass.draw(0..3, 0..5);
             }
         }
@@ -429,6 +443,7 @@ async fn run() {
     state.window.set_key_polling(true);
     state.window.set_mouse_button_polling(true);
     state.window.set_pos_polling(true);
+
     // state.window.set_cursor_mode(glfw::CursorMode::Hidden);
 
     // Build world

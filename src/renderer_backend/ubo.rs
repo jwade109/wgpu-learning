@@ -1,9 +1,14 @@
 use super::bind_group;
 use super::mesh_builder::any_as_u8_slice;
 
-pub struct UBO {
+pub struct SingleUBO {
     pub buffer: wgpu::Buffer,
-    pub bind_groups: Vec<wgpu::BindGroup>,
+    pub bind_group: wgpu::BindGroup,
+}
+
+pub struct UBO {
+    buffer: wgpu::Buffer,
+    bind_groups: Vec<wgpu::BindGroup>,
     allignment: u64,
 }
 
@@ -36,6 +41,10 @@ impl UBO {
             bind_groups,
             allignment,
         }
+    }
+
+    pub fn bind_group(&self, i: usize) -> Option<&wgpu::BindGroup> {
+        self.bind_groups.get(i)
     }
 
     pub fn upload(&mut self, i: u64, matrix: &glm::Mat4, queue: &wgpu::Queue) {
