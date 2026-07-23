@@ -77,11 +77,6 @@ struct State<'a> {
     pipeline_selector: PipelineSelector,
 }
 
-fn set_mesh_in_render_pass(rp: &mut wgpu::RenderPass, mwm: &MeshWithMaterial) {
-    rp.set_vertex_buffer(0, mwm.mesh.vertex_buffer());
-    rp.set_index_buffer(mwm.mesh.index_buffer(), mwm.mesh.index_format());
-}
-
 struct MeshWithMaterial {
     mesh: Mesh,
     material: Material,
@@ -143,7 +138,7 @@ impl<'a> State<'a> {
         };
         surface.configure(&device, &config);
 
-        let triangle_mesh = mesh_builder::make_triangle(&device);
+        let triangle_mesh = mesh_builder::make_octagon(&device);
 
         let quad_mesh = mesh_builder::make_quad(&device);
 
@@ -418,20 +413,20 @@ impl<'a> State<'a> {
             match self.pipeline_selector {
                 PipelineSelector::Lava => {
                     renderpass.set_bind_group(0, &self.uniform_data_ubo.bind_group, &[]);
-                    set_mesh_in_render_pass(&mut renderpass, &self.quad);
                 }
                 PipelineSelector::Map => {
                     renderpass.set_bind_group(0, &self.uniform_data_ubo.bind_group, &[]);
-                    set_mesh_in_render_pass(&mut renderpass, &self.quad);
                 }
                 PipelineSelector::Texture => {
                     renderpass.set_bind_group(0, &self.uniform_data_ubo.bind_group, &[]);
                     renderpass.set_bind_group(2, &self.quad.material.bind_group, &[]);
-                    set_mesh_in_render_pass(&mut renderpass, &self.quad);
                 }
             }
 
             // Quads
+            self.quad.mesh.apply_to_pass(&mut renderpass);
+
+            let n_indices = self.quad.mesh.index_count();
 
             let mut offset: usize = 0;
             for i in 0..quads.len() {
@@ -442,14 +437,15 @@ impl<'a> State<'a> {
                     .flatten()
                     .unwrap();
                 renderpass.set_bind_group(1, bg, &[]);
-                renderpass.draw_indexed(0..6, 0, 0..1);
+                renderpass.draw_indexed(0..n_indices, 0, 0..1);
             }
 
             if self.pipeline_selector == PipelineSelector::Texture {
                 renderpass.set_bind_group(2, &self.triangle.material.bind_group, &[]);
             }
 
-            set_mesh_in_render_pass(&mut renderpass, &self.triangle);
+            self.triangle.mesh.apply_to_pass(&mut renderpass);
+            let n_indices = self.triangle.mesh.index_count();
 
             offset = quads.len();
             for i in 0..tris.len() {
@@ -460,7 +456,8 @@ impl<'a> State<'a> {
                     .flatten()
                     .unwrap();
                 renderpass.set_bind_group(1, bg, &[]);
-                renderpass.draw(0..3, 0..1);
+                // renderpass.draw(0..3, 0..1);
+                renderpass.draw_indexed(0..n_indices, 0, 0..1);
             }
         }
         self.queue.submit(std::iter::once(command_encoder.finish()));

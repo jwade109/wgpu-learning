@@ -27,6 +27,10 @@ fn vs_main(vertex: Vertex) -> VertexShaderOut {
 @fragment
 fn fs_main(in: VertexShaderOut) -> FragmentShaderOut {
     var out: FragmentShaderOut;
-    out.color = textureSample(the_texture, the_sampler, in.tex_coord);
+    var c = textureSample(the_texture, the_sampler, in.tex_coord);
+    c.x = pow(c.x, 2.0);
+    c.y = pow(c.y, 2.0);
+    c.z = pow(c.z, 2.0);
+    out.color = c;
     return out;
 }
