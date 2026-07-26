@@ -1,8 +1,11 @@
-@group(0) @binding(0) var<uniform> uniform_data: UniformData;
+@group(0) @binding(0) var<uniform> uniform_data: ShaderParams;
 
-struct UniformData {
+struct ShaderParams {
     mouse_pos: vec2<f32>,
     resolution: vec2<f32>,
+    camera_offset_x: f32,
+    camera_offset_y: f32,
+    camera_offset_z: f32,
     time: f32,
 }
 

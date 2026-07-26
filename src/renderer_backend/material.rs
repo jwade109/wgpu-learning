@@ -1,10 +1,10 @@
 use super::bind_group;
 
-pub struct Material {
-    pub bind_group: wgpu::BindGroup,
+pub struct SpriteMaterial {
+    bind_group: wgpu::BindGroup,
 }
 
-impl Material {
+impl SpriteMaterial {
     pub fn new(
         filename: &str,
         device: &wgpu::Device,
@@ -74,6 +74,10 @@ impl Material {
         builder.add_material(&view, &sampler);
         let bind_group = builder.build(label);
 
-        Material { bind_group }
+        SpriteMaterial { bind_group }
+    }
+
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
     }
 }

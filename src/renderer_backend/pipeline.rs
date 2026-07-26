@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::renderer_backend::mesh_builder::Vertex;
+use crate::renderer_backend::mesh::Vertex;
 
 #[derive(Default)]
 pub struct Shader {

@@ -89,21 +89,6 @@ fn indices_to_bytes(indices: &[u16]) -> Vec<u8> {
         .concat()
 }
 
-pub fn make_triangle(device: &wgpu::Device) -> Mesh {
-    let w = 0.8;
-    let z = 0.9;
-    let color = Vec3::new(1.0, 0.0, 0.0);
-    let vertices = vec![
-        Vertex::new(Vec3::new(-w, -w, z), color, Vec2::new(0.0, 0.0)),
-        Vertex::new(Vec3::new(w, -w, z), color, Vec2::new(1.0, 0.0)),
-        Vertex::new(Vec3::new(0.0, w, z), color, Vec2::new(1.0, 1.0)),
-    ];
-
-    let indices: [u16; 3] = [0, 1, 2];
-
-    mesh_from_vi(device, &vertices, &indices)
-}
-
 fn mesh_from_vi(device: &wgpu::Device, vertices: &[Vertex], indices: &[u16]) -> Mesh {
     let bytes_1: &[u8] = &vertices_to_bytes(vertices);
     let bytes_2: &[u8] = &indices_to_bytes(&indices);
@@ -125,27 +110,25 @@ fn mesh_from_vi(device: &wgpu::Device, vertices: &[Vertex], indices: &[u16]) -> 
     }
 }
 
-pub fn make_quad(device: &wgpu::Device) -> Mesh {
-    let w = 1.0;
-
+pub fn make_quad(device: &wgpu::Device, size: f32) -> Mesh {
     let vertices: [Vertex; 4] = [
         Vertex::new(
-            Vec3::new(-w, -w, 1.0),
+            Vec3::new(-size, -size, 1.0),
             Vec3::new(1.0, 0.0, 0.0),
             Vec2::new(0.0, 0.0),
         ),
         Vertex::new(
-            Vec3::new(w, -w, 1.0),
+            Vec3::new(size, -size, 1.0),
             Vec3::new(0.0, 1.0, 1.0),
             Vec2::new(1.0, 0.0),
         ),
         Vertex::new(
-            Vec3::new(w, w, 1.0),
+            Vec3::new(size, size, 1.0),
             Vec3::new(0.0, 0.0, 1.0),
             Vec2::new(1.0, 1.0),
         ),
         Vertex::new(
-            Vec3::new(-w, w, 1.0),
+            Vec3::new(-size, size, 1.0),
             Vec3::new(1.0, 0.0, 1.0),
             Vec2::new(0.0, 1.0),
         ),
@@ -162,11 +145,14 @@ pub fn make_n_gon(device: &wgpu::Device, n: usize) -> Mesh {
             let a = 2.0 * std::f32::consts::PI * i as f32 / n as f32;
             let x = a.cos();
             let y = a.sin();
-            (x, y)
+            (a, x, y)
         })
-        .map(|(x, y)| {
+        .map(|(a, x, y)| {
             let pos = Vec3::new(x, y, 1.0);
-            let color = Vec3::new(1.0, 0.6, 0.4);
+            let r = a.sin() * 0.5 + 0.5;
+            let g = a.cos() * 0.5 + 0.5;
+            let b = (a * 0.5).sin() * 0.5 + 0.5;
+            let color = Vec3::new(r, g, b);
             let tx = Vec2::new(x, y);
             Vertex::new(pos, color, tx)
         })
