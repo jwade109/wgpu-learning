@@ -1,5 +1,7 @@
 use std::fs;
 
+use crate::renderer_backend::mesh_builder::Vertex;
+
 #[derive(Default)]
 pub struct Shader {
     pub contents: String,
@@ -41,20 +43,18 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub fn add_vertex_buffer_layout(&mut self, layout: wgpu::VertexBufferLayout<'static>) {
-        self.vertex_buffer_layouts.push(layout);
-    }
-
     pub fn add_bind_group_layout(&mut self, layout: &'a wgpu::BindGroupLayout) {
         self.bind_group_layouts.push(layout);
     }
 
     pub fn build(
-        self,
+        mut self,
         label: &str,
         shader: &Shader,
         pixel_format: wgpu::TextureFormat,
     ) -> wgpu::RenderPipeline {
+        self.vertex_buffer_layouts.push(Vertex::get_layout());
+
         let shader_module = make_shader_module(&self.device, shader, "Shader Module");
 
         let pipeline_layout = {

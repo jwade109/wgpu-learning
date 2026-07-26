@@ -24,7 +24,7 @@ impl Mesh {
         wgpu::IndexFormat::Uint16
     }
 
-    pub fn apply_to_pass(&self, rp: &mut wgpu::RenderPass) {
+    pub fn set_as_active(&self, rp: &mut wgpu::RenderPass) {
         rp.set_vertex_buffer(0, self.vertex_buffer());
         rp.set_index_buffer(self.index_buffer(), self.index_format());
     }
@@ -156,10 +156,10 @@ pub fn make_quad(device: &wgpu::Device) -> Mesh {
     mesh_from_vi(device, &vertices, &indices)
 }
 
-pub fn make_octagon(device: &wgpu::Device) -> Mesh {
-    let vertices = (0..8)
+pub fn make_n_gon(device: &wgpu::Device, n: usize) -> Mesh {
+    let vertices = (0..n)
         .map(|i| {
-            let a = 2.0 * std::f32::consts::PI * i as f32 / 8.0;
+            let a = 2.0 * std::f32::consts::PI * i as f32 / n as f32;
             let x = a.cos();
             let y = a.sin();
             (x, y)
@@ -172,15 +172,13 @@ pub fn make_octagon(device: &wgpu::Device) -> Mesh {
         })
         .collect::<Vec<_>>();
 
-    #[rustfmt::skip]
-    let indices = [
-        0, 1, 2,
-        0, 2, 3,
-        0, 3, 4,
-        0, 4, 5,
-        0, 5, 6,
-        0, 6, 7
-    ];
+    let indices: Vec<u16> = (0..n - 2)
+        .map(|i| {
+            let i = i as u16;
+            [0, 1 + i, 2 + i]
+        })
+        .collect::<Vec<_>>()
+        .concat();
 
     mesh_from_vi(device, &vertices, &indices)
 }

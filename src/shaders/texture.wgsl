@@ -1,5 +1,13 @@
-@group(2) @binding(0) var the_texture: texture_2d<f32>;
-@group(2) @binding(1) var the_sampler: sampler;
+@group(0) @binding(0) var<uniform> transform: mat4x4<f32>;
+@group(1) @binding(0) var the_texture: texture_2d<f32>;
+@group(1) @binding(1) var the_sampler: sampler;
+@group(2) @binding(0) var<uniform> uniform_data: UniformData;
+
+struct UniformData {
+    mouse_pos: vec2<f32>,
+    resolution: vec2<f32>,
+    time: f32,
+}
 
 struct Vertex {
     @location(0) position: vec3<f32>,
@@ -19,15 +27,19 @@ struct FragmentShaderOut {
 @vertex
 fn vs_main(vertex: Vertex) -> VertexShaderOut {
     var out: VertexShaderOut;
-    out.position = vec4<f32>(vertex.position, 1.0);
+    out.position = transform * vec4<f32>(vertex.position, 1.0);
     out.tex_coord = vec2<f32>(vertex.tex_coord.x, 1.0 - vertex.tex_coord.y);
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexShaderOut) -> FragmentShaderOut {
+
+    let t = floor(uniform_data.time * 2.0);
+    let n = t % 18;
+
     var out: FragmentShaderOut;
-    var c = textureSample(the_texture, the_sampler, in.tex_coord);
+    var c = textureSample(the_texture, the_sampler, in.tex_coord * n);
     c.x = pow(c.x, 2.0);
     c.y = pow(c.y, 2.0);
     c.z = pow(c.z, 2.0);

@@ -2,6 +2,7 @@
 
 struct UniformData {
     mouse_pos: vec2<f32>,
+    resolution: vec2<f32>,
     time: f32,
 }
 

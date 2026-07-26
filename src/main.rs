@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use glfw::{fail_on_errors, Action, ClientApiHint, Key, Window, WindowHint};
 mod renderer_backend;
 use renderer_backend::{bind_group_layout, material::Material, mesh_builder, pipeline, ubo::UBO};
@@ -15,10 +17,29 @@ use crate::{
 // We need this for Rust to store our data correctly for the shaders
 #[repr(C)]
 // This is so we can store this in a buffer
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Copy, Clone)]
 struct UniformData {
-    mouse_pos_and_time: [f32; 3],
-    _dummy: [f32; 12],
+    mouse: (f32, f32),
+    resolution: (f32, f32),
+    time: f32,
+}
+
+impl UniformData {
+    fn to_bytes(&self) -> Vec<u8> {
+        [
+            self.mouse.0.to_le_bytes(),
+            self.mouse.1.to_le_bytes(),
+            self.resolution.0.to_le_bytes(),
+            self.resolution.1.to_le_bytes(),
+            self.time.to_le_bytes(),
+            [0; 4],
+            [0; 4],
+            [0; 4],
+            [0; 4],
+            [0; 4],
+        ]
+        .concat()
+    }
 }
 
 struct World {
@@ -41,6 +62,12 @@ impl World {
             self.tris[i].angle = self.tris[i].angle + self.tris[i].vel * dt;
             if self.tris[i].angle > 360.0 {
                 self.tris[i].angle -= 360.0;
+            }
+        }
+        for i in 0..self.quads.len() {
+            self.quads[i].angle = self.quads[i].angle + self.quads[i].vel * dt;
+            if self.quads[i].angle > 360.0 {
+                self.quads[i].angle -= 360.0;
             }
         }
 
@@ -66,25 +93,25 @@ struct State<'a> {
     size: (i32, i32),
     window: &'a mut Window,
     lava_lamp_pipeline: wgpu::RenderPipeline,
+    loading_animation_pipeline: wgpu::RenderPipeline,
     map_pipeline: wgpu::RenderPipeline,
     texture_pipeline: wgpu::RenderPipeline,
-    triangle: MeshWithMaterial,
-    quad: MeshWithMaterial,
+    full_screen_mesh: Mesh,
+
+    fun_quad_meshes: HashMap<usize, Mesh>,
+    fun_quad_material: Material,
+
     ubo: Option<UBO>,
 
-    uniform_data_ubo: SingleUBO,
+    common_shader_info: SingleUBO,
 
     pipeline_selector: PipelineSelector,
-}
-
-struct MeshWithMaterial {
-    mesh: Mesh,
-    material: Material,
 }
 
 #[derive(PartialEq, Eq)]
 enum PipelineSelector {
     Lava,
+    Loading,
     Map,
     Texture,
 }
@@ -138,9 +165,14 @@ impl<'a> State<'a> {
         };
         surface.configure(&device, &config);
 
-        let triangle_mesh = mesh_builder::make_octagon(&device);
+        let full_screen_quad_mesh = mesh_builder::make_n_gon(&device, 3);
 
-        let quad_mesh = mesh_builder::make_quad(&device);
+        let mut fun_quad_meshes = HashMap::new();
+
+        for n_sides in 3..=20 {
+            let mesh = mesh_builder::make_n_gon(&device, n_sides);
+            fun_quad_meshes.insert(n_sides, mesh);
+        }
 
         let material_bind_group_layout;
         {
@@ -157,17 +189,18 @@ impl<'a> State<'a> {
         }
 
         let uniform_data = UniformData {
-            mouse_pos_and_time: [450.0, 360.0, 0.0],
-            _dummy: Default::default(),
+            mouse: (450.0, 360.0),
+            time: 0.0,
+            resolution: (100.0, 100.0),
         };
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
-            contents: bytemuck::cast_slice(&[uniform_data]),
+            contents: &uniform_data.to_bytes(),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let uniform_bind_group_layout =
+        let time_etc_data_bind_group =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -185,8 +218,15 @@ impl<'a> State<'a> {
         let lava_lamp_pipeline = {
             let mut builder = pipeline::Builder::new(&device);
             let shader = Shader::from_path("src/shaders/cells.wgsl");
-            builder.add_vertex_buffer_layout(mesh_builder::Vertex::get_layout());
-            builder.add_bind_group_layout(&uniform_bind_group_layout);
+            builder.add_bind_group_layout(&time_etc_data_bind_group);
+            builder.add_bind_group_layout(&ubo_bind_group_layout);
+            builder.build("Lava Lamp Pipeline", &shader, config.format)
+        };
+
+        let loading_animation_pipeline = {
+            let mut builder = pipeline::Builder::new(&device);
+            let shader = Shader::from_path("src/shaders/loading.wgsl");
+            builder.add_bind_group_layout(&time_etc_data_bind_group);
             builder.add_bind_group_layout(&ubo_bind_group_layout);
             builder.build("Lava Lamp Pipeline", &shader, config.format)
         };
@@ -194,8 +234,7 @@ impl<'a> State<'a> {
         let map_pipeline = {
             let mut builder = pipeline::Builder::new(&device);
             let shader = Shader::from_path("src/shaders/map.wgsl");
-            builder.add_vertex_buffer_layout(mesh_builder::Vertex::get_layout());
-            builder.add_bind_group_layout(&uniform_bind_group_layout);
+            builder.add_bind_group_layout(&time_etc_data_bind_group);
             builder.add_bind_group_layout(&ubo_bind_group_layout);
             builder.build("Map Pipeline", &shader, config.format)
         };
@@ -203,22 +242,13 @@ impl<'a> State<'a> {
         let texture_pipeline = {
             let mut builder = pipeline::Builder::new(&device);
             let shader = Shader::from_path("src/shaders/texture.wgsl");
-            builder.add_vertex_buffer_layout(mesh_builder::Vertex::get_layout());
-            builder.add_bind_group_layout(&uniform_bind_group_layout);
             builder.add_bind_group_layout(&ubo_bind_group_layout);
             builder.add_bind_group_layout(&material_bind_group_layout);
+            builder.add_bind_group_layout(&time_etc_data_bind_group);
             builder.build("Texture Pipeline", &shader, config.format)
         };
 
-        let triangle_material = Material::new(
-            "img/pod.jpg",
-            &device,
-            &queue,
-            "Triangle Material",
-            &material_bind_group_layout,
-        );
-
-        let quad_material = Material::new(
+        let fun_quad_material = Material::new(
             "img/invincible.jpg",
             &device,
             &queue,
@@ -228,7 +258,7 @@ impl<'a> State<'a> {
 
         let uniform_bind_group = {
             let mut builder = Builder::new(&device);
-            builder.set_layout(&uniform_bind_group_layout);
+            builder.set_layout(&time_etc_data_bind_group);
             builder.add_buffer(&uniform_buffer, 0);
             builder.build("uniform buffer")
         };
@@ -245,19 +275,15 @@ impl<'a> State<'a> {
             config,
             size,
             lava_lamp_pipeline,
+            loading_animation_pipeline,
             map_pipeline,
             texture_pipeline,
-            triangle: MeshWithMaterial {
-                mesh: triangle_mesh,
-                material: triangle_material,
-            },
-            quad: MeshWithMaterial {
-                mesh: quad_mesh,
-                material: quad_material,
-            },
+            full_screen_mesh: full_screen_quad_mesh,
+            fun_quad_meshes,
+            fun_quad_material,
             ubo: None,
 
-            uniform_data_ubo: SingleUBO {
+            common_shader_info: SingleUBO {
                 buffer: uniform_buffer,
                 bind_group: uniform_bind_group,
             },
@@ -269,6 +295,7 @@ impl<'a> State<'a> {
     fn get_current_pipeline(&self) -> &wgpu::RenderPipeline {
         match self.pipeline_selector {
             PipelineSelector::Lava => &self.lava_lamp_pipeline,
+            PipelineSelector::Loading => &self.loading_animation_pipeline,
             PipelineSelector::Map => &self.map_pipeline,
             PipelineSelector::Texture => &self.texture_pipeline,
         }
@@ -299,9 +326,110 @@ impl<'a> State<'a> {
         self.ubo = Some(UBO::new(&self.device, object_count, ubo_bind_group_layout));
     }
 
+    fn draw_lava_lamp(&self, rp: &mut wgpu::RenderPass) {
+        rp.set_bind_group(0, &self.common_shader_info.bind_group, &[]);
+        self.full_screen_mesh.set_as_active(rp);
+        let bg = self
+            .ubo
+            .as_ref()
+            .map(|e| e.bind_group(0))
+            .flatten()
+            .unwrap();
+        rp.set_bind_group(1, bg, &[]);
+        rp.draw_indexed(0..self.full_screen_mesh.index_count(), 0, 0..1);
+    }
+
+    fn draw_loading(&self, rp: &mut wgpu::RenderPass) {
+        rp.set_bind_group(0, &self.common_shader_info.bind_group, &[]);
+        self.full_screen_mesh.set_as_active(rp);
+        let bg = self
+            .ubo
+            .as_ref()
+            .map(|e| e.bind_group(0))
+            .flatten()
+            .unwrap();
+        rp.set_bind_group(1, bg, &[]);
+        rp.draw_indexed(0..self.full_screen_mesh.index_count(), 0, 0..1);
+    }
+
+    fn draw_map(&self, rp: &mut wgpu::RenderPass) {
+        rp.set_bind_group(0, &self.common_shader_info.bind_group, &[]);
+        self.full_screen_mesh.set_as_active(rp);
+        let bg = self
+            .ubo
+            .as_ref()
+            .map(|e| e.bind_group(0))
+            .flatten()
+            .unwrap();
+        rp.set_bind_group(1, bg, &[]);
+        rp.draw_indexed(0..self.full_screen_mesh.index_count(), 0, 0..1);
+    }
+
+    fn draw_texture(&mut self, rp: &mut wgpu::RenderPass, quads: &Vec<Object>, tris: &Vec<Object>) {
+        rp.set_bind_group(2, &self.common_shader_info.bind_group, &[]);
+
+        // upload transforms to UBO
+        let c0 = glm::Vec4::new(1.0, 0.0, 0.0, 0.0);
+        let c1 = glm::Vec4::new(0.0, 1.0, 0.0, 0.0);
+        let c2 = glm::Vec4::new(0.0, 0.0, 1.0, 0.0);
+        let c3 = glm::Vec4::new(0.0, 0.0, 0.0, 1.0);
+        let m1 = glm::Matrix4::new(c0, c1, c2, c3);
+        let m2 = glm::Matrix4::new(c0, c1, c2, c3);
+
+        {
+            let mut offset: u64 = 0;
+            for i in 0..quads.len() {
+                let matrix = ext::rotate(&m2, quads[i].angle, glm::Vector3::new(0.0, 0.0, 1.0))
+                    * ext::translate(&m1, quads[i].position);
+                self.ubo
+                    .as_mut()
+                    .unwrap()
+                    .upload(offset + i as u64, &matrix, &self.queue);
+            }
+
+            offset = quads.len() as u64;
+            for i in 0..tris.len() {
+                let matrix = ext::rotate(&m2, tris[i].angle, glm::Vector3::new(0.0, 0.0, 1.0))
+                    * ext::translate(&m1, tris[i].position);
+                self.ubo
+                    .as_mut()
+                    .unwrap()
+                    .upload(offset + i as u64, &matrix, &self.queue);
+            }
+        }
+
+        // rp.set_bind_group(0, &self.common_shader_info.bind_group, &[]);
+        rp.set_bind_group(1, &self.fun_quad_material.bind_group, &[]);
+        // Quads
+
+        for i in 0..quads.len() {
+            let matrix = ext::rotate(&m2, quads[i].angle, glm::Vector3::new(0.0, 0.0, 1.0))
+                * ext::translate(&m1, quads[i].position);
+            self.ubo
+                .as_mut()
+                .unwrap()
+                .upload(i as u64, &matrix, &self.queue);
+
+            let bg = self
+                .ubo
+                .as_ref()
+                .map(|e| e.bind_group(i))
+                .flatten()
+                .unwrap();
+
+            let n_sides = quads[i].n_sides;
+            let mesh = self.fun_quad_meshes.get(&n_sides).unwrap();
+
+            mesh.set_as_active(rp);
+
+            rp.set_bind_group(0, bg, &[]);
+            rp.draw_indexed(0..mesh.index_count(), 0, 0..1);
+        }
+    }
+
     fn render(
         &mut self,
-        quads: &Vec<Object>,
+        quads: &mut Vec<Object>,
         tris: &Vec<Object>,
     ) -> Result<(), wgpu::SurfaceError> {
         let (w, h) = self.window.get_size();
@@ -318,58 +446,26 @@ impl<'a> State<'a> {
         self.mouse_pos_smoothed[1] += (mouse_pos.1 as f32 - self.mouse_pos_smoothed[1]) * 0.06;
 
         let uniform_data = UniformData {
-            mouse_pos_and_time: [
-                self.mouse_pos_smoothed[0],
-                self.mouse_pos_smoothed[1],
-                self.time,
-            ],
-            _dummy: Default::default(),
+            mouse: (self.mouse_pos_smoothed[0], self.mouse_pos_smoothed[1]),
+            time: self.time,
+            resolution: (
+                self.window.get_size().0 as f32,
+                self.window.get_size().1 as f32,
+            ),
         };
 
         if !self.paused {
             self.time += 0.005;
-        }
 
-        self.queue.write_buffer(
-            &self.uniform_data_ubo.buffer,
-            0,
-            bytemuck::cast_slice(&[uniform_data]),
-        );
-
-        // upload transforms to UBO
-        {
-            let mut offset: u64 = 0;
-            for i in 0..quads.len() {
-                let c0 = glm::Vec4::new(1.0, 0.0, 0.0, 0.0);
-                let c1 = glm::Vec4::new(0.0, 1.0, 0.0, 0.0);
-                let c2 = glm::Vec4::new(0.0, 0.0, 1.0, 0.0);
-                let c3 = glm::Vec4::new(0.0, 0.0, 0.0, 1.0);
-                let m1 = glm::Matrix4::new(c0, c1, c2, c3);
-                let m2 = glm::Matrix4::new(c0, c1, c2, c3);
-                let matrix = ext::rotate(&m2, quads[i].angle, glm::Vector3::new(0.0, 0.0, 1.0))
-                    * ext::translate(&m1, quads[i].position);
-                self.ubo
-                    .as_mut()
-                    .unwrap()
-                    .upload(offset + i as u64, &matrix, &self.queue);
-            }
-
-            offset = quads.len() as u64;
-            for i in 0..tris.len() {
-                let c0 = glm::Vec4::new(1.0, 0.0, 0.0, 0.0);
-                let c1 = glm::Vec4::new(0.0, 1.0, 0.0, 0.0);
-                let c2 = glm::Vec4::new(0.0, 0.0, 1.0, 0.0);
-                let c3 = glm::Vec4::new(0.0, 0.0, 0.0, 1.0);
-                let m1 = glm::Matrix4::new(c0, c1, c2, c3);
-                let m2 = glm::Matrix4::new(c0, c1, c2, c3);
-                let matrix = ext::rotate(&m2, tris[i].angle, glm::Vector3::new(0.0, 0.0, 1.0))
-                    * ext::translate(&m1, tris[i].position);
-                self.ubo
-                    .as_mut()
-                    .unwrap()
-                    .upload(offset + i as u64, &matrix, &self.queue);
+            for quad in quads.iter_mut() {
+                let t = (self.time * 2.0).floor() as usize;
+                let n = t % 18 + 3;
+                quad.n_sides = n;
             }
         }
+
+        self.queue
+            .write_buffer(&self.common_shader_info.buffer, 0, &uniform_data.to_bytes());
 
         {
             let event = self.queue.submit([]);
@@ -412,54 +508,20 @@ impl<'a> State<'a> {
 
             match self.pipeline_selector {
                 PipelineSelector::Lava => {
-                    renderpass.set_bind_group(0, &self.uniform_data_ubo.bind_group, &[]);
+                    self.draw_lava_lamp(&mut renderpass);
+                }
+                PipelineSelector::Loading => {
+                    self.draw_loading(&mut renderpass);
                 }
                 PipelineSelector::Map => {
-                    renderpass.set_bind_group(0, &self.uniform_data_ubo.bind_group, &[]);
+                    self.draw_map(&mut renderpass);
                 }
                 PipelineSelector::Texture => {
-                    renderpass.set_bind_group(0, &self.uniform_data_ubo.bind_group, &[]);
-                    renderpass.set_bind_group(2, &self.quad.material.bind_group, &[]);
+                    self.draw_texture(&mut renderpass, quads, tris);
                 }
             }
-
-            // Quads
-            self.quad.mesh.apply_to_pass(&mut renderpass);
-
-            let n_indices = self.quad.mesh.index_count();
-
-            let mut offset: usize = 0;
-            for i in 0..quads.len() {
-                let bg = self
-                    .ubo
-                    .as_ref()
-                    .map(|e| e.bind_group(offset + i))
-                    .flatten()
-                    .unwrap();
-                renderpass.set_bind_group(1, bg, &[]);
-                renderpass.draw_indexed(0..n_indices, 0, 0..1);
-            }
-
-            if self.pipeline_selector == PipelineSelector::Texture {
-                renderpass.set_bind_group(2, &self.triangle.material.bind_group, &[]);
-            }
-
-            self.triangle.mesh.apply_to_pass(&mut renderpass);
-            let n_indices = self.triangle.mesh.index_count();
-
-            offset = quads.len();
-            for i in 0..tris.len() {
-                let bg = self
-                    .ubo
-                    .as_ref()
-                    .map(|e| e.bind_group(offset + i))
-                    .flatten()
-                    .unwrap();
-                renderpass.set_bind_group(1, bg, &[]);
-                // renderpass.draw(0..3, 0..1);
-                renderpass.draw_indexed(0..n_indices, 0, 0..1);
-            }
         }
+
         self.queue.submit(std::iter::once(command_encoder.finish()));
         self.device.poll(wgpu::Maintain::wait());
 
@@ -494,23 +556,14 @@ async fn run() {
 
     // Build world
     let mut world = World::new();
-    world.tris.push(Object {
-        position: glm::Vec3::new(0.0, 0.0, 0.0),
-        angle: 0.0,
-        vel: 0.000,
-    });
-    // world.tris.push(Object {
-    //     position: glm::Vec3::new(0.0, 0.0, 0.0),
-    //     angle: 0.8,
-    //     vel: 0.002,
-    // });
     world.quads.push(Object {
         position: glm::Vec3::new(0.0, 0.0, 0.0),
         angle: 0.0,
-        vel: 0.0,
+        vel: 0.00002,
+        n_sides: 9,
     });
 
-    state.build_ubos_for_objects(3);
+    state.build_ubos_for_objects(world.quads.len());
 
     while !state.window.should_close() {
         glfw.poll_events();
@@ -528,7 +581,8 @@ async fn run() {
                 }
                 glfw::WindowEvent::Key(Key::Right, _, Action::Press, _) => {
                     state.pipeline_selector = match state.pipeline_selector {
-                        PipelineSelector::Lava => PipelineSelector::Map,
+                        PipelineSelector::Lava => PipelineSelector::Loading,
+                        PipelineSelector::Loading => PipelineSelector::Map,
                         PipelineSelector::Map => PipelineSelector::Texture,
                         PipelineSelector::Texture => PipelineSelector::Lava,
                     };
@@ -549,7 +603,7 @@ async fn run() {
             }
         }
 
-        match state.render(&world.quads, &world.tris) {
+        match state.render(&mut world.quads, &world.tris) {
             Ok(_) => {}
             Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                 state.update_surface();

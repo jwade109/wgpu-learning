@@ -2,6 +2,7 @@
 
 struct UniformData {
     mouse_pos: vec2<f32>,
+    resolution: vec2<f32>,
     time: f32,
 }
 
@@ -60,8 +61,8 @@ fn get_lava_lamp_color(in: VertexShaderOutput) -> vec4<f32> {
 
     for (var i = 0; i < 32; i += 1)
     {
-        var x = rand(f32(i)) * 2500;
-        var y = rand(f32(i + 747457)) * 1200;
+        var x = rand(f32(i)) * 2500.0; // uniform_data.resolution.x;
+        var y = rand(f32(i + 747457)) * 1200.0; // uniform_data.resolution.y;
 
         let period = (rand(f32(i) * 90275) * 5.0) + 2.0;
 

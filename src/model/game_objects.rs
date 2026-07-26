@@ -4,6 +4,7 @@ pub struct Object {
     pub position: Vec3,
     pub angle: f32,
     pub vel: f32,
+    pub n_sides: usize,
 }
 
 pub struct Camera {
