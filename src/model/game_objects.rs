@@ -10,6 +10,7 @@ pub struct Object {
     pub angle: f32,
     pub vel: f32,
     pub mesh_type: MeshType,
+    pub should_animate: bool,
 }
 
 impl Object {
@@ -29,66 +30,79 @@ impl Object {
 }
 
 pub struct Camera {
-    pub position: Vec3,
-    pub forwards: Vec3,
-    pub right: Vec3,
-    pub up: Vec3,
-    yaw: f32,
-    pitch: f32,
+    pub eye: Vec3,
+    pub target: Vec3,
 }
 
 impl Camera {
     pub fn new() -> Self {
-        let position = Vec3::new(-0.0, 0.0, 2.0);
-        let yaw: f32 = 0.0;
-        let pitch: f32 = 0.0;
-
-        let forwards = Vec3::new(1.0, 0.0, 0.0);
-        let right = Vec3::new(0.0, -1.0, 0.0);
-        let up = Vec3::new(0.0, 0.0, 1.0);
-
-        Camera {
-            position,
-            yaw,
-            pitch,
-            forwards,
-            right,
-            up,
+        Self {
+            target: Vec3::new(0.0, 0.0, 0.0),
+            eye: Vec3::new(8.0, 19.0, 5.0),
         }
     }
 
-    pub fn spin(&mut self, d_yaw: f32, d_pitch: f32) {
-        self.yaw = self.yaw + d_yaw;
-        if self.yaw > 360.0 {
-            self.yaw = self.yaw - 360.0;
+    pub fn to_projection_matrix(&self, window: &glfw::Window) -> Mat4 {
+        let up = normalize(Vec3::new(0.0, 1.0, 0.0));
+
+        let zaxis = normalize(self.eye - self.target); // forward vector
+        let xaxis = normalize(cross(up, zaxis)); // The "right" vector.
+        let yaxis = normalize(cross(zaxis, xaxis)); // The "up" vector.
+
+        let orientation = Matrix4::new(
+            Vec4::new(xaxis.x, yaxis.x, zaxis.x, 0.0),
+            Vec4::new(xaxis.y, yaxis.y, zaxis.y, 0.0),
+            Vec4::new(xaxis.z, yaxis.z, zaxis.z, 0.0),
+            Vec4::new(0.0, 0.0, 0.0, 1.0),
+        );
+
+        let translation = Matrix4::new(
+            Vec4::new(1.0, 0.0, 0.0, 0.0),
+            Vec4::new(0.0, 1.0, 0.0, 0.0),
+            Vec4::new(0.0, 0.0, 1.0, 0.0),
+            Vec4::new(-self.eye.x, -self.eye.y, -self.eye.z, 1.0),
+        );
+
+        let view = orientation * translation;
+
+        let fov_y: f32 = radians(50.0);
+        let (sx, sy) = window.get_size();
+        let aspect = sx as f32 / sy as f32;
+        let z_near = 0.1;
+        let z_far = 100.0;
+        let projection = ext::perspective(fov_y, aspect, z_near, z_far);
+
+        projection * view
+    }
+}
+
+pub struct World {
+    pub time: f32,
+    pub quads: Vec<Object>,
+    pub camera: Camera,
+}
+
+impl World {
+    pub fn new() -> Self {
+        World {
+            time: 0.0,
+            quads: Vec::new(),
+            camera: Camera::new(),
         }
-        if self.yaw < 0.0 {
-            self.yaw = self.yaw + 360.0;
-        }
-
-        self.pitch = min(89.0, max(-89.0, self.pitch + d_pitch));
-
-        let c = cos(radians(self.yaw));
-        let s = sin(radians(self.yaw));
-        let c2 = cos(radians(self.pitch));
-        let s2 = sin(radians(self.pitch));
-
-        self.forwards.x = c * c2;
-        self.forwards.y = s * c2;
-        self.forwards.z = s2;
-
-        self.up.x = 0.0;
-        self.up.y = 0.0;
-        self.up.z = 1.0;
-
-        self.right = normalize(cross(self.forwards, self.up));
-
-        self.up = normalize(cross(self.right, self.forwards));
     }
 
-    pub fn walk(&mut self, d_right: f32, d_forwards: f32) {
-        let z: f32 = self.position.z;
-        self.position = self.position + self.right * d_right + self.forwards * d_forwards;
-        self.position.z = z;
+    pub fn update(&mut self, dt: f32, window: &mut glfw::Window) {
+        self.time += dt;
+        for quad in &mut self.quads {
+            quad.angle = quad.angle + quad.vel * dt;
+            if quad.angle > 360.0 {
+                quad.angle -= 360.0;
+            }
+
+            if quad.should_animate {
+                let a = quad.position.x * 0.6 + quad.position.z * 0.4 + self.time / 2.0;
+                quad.position.y = a.sin() + 1.0;
+            }
+        }
     }
 }

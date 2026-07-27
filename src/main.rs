@@ -1,19 +1,23 @@
 use glm::*;
 use std::collections::HashMap;
 
+use clap::Parser;
 use enum_iterator::Sequence;
 use glfw::{fail_on_errors, Action, ClientApiHint, Key, Window, WindowHint};
-mod renderer_backend;
-use renderer_backend::{bind_group_layout, material::SpriteMaterial, mesh, pipeline, ubo::UBO};
-mod model;
-use clap::Parser;
 use model::game_objects::Object;
+use renderer_backend::{bind_group_layout, material::SpriteMaterial, mesh, pipeline, ubo::UBO};
 use wgpu::util::DeviceExt;
 
 use crate::{
-    model::game_objects::{Camera, MeshType},
-    renderer_backend::{bind_group::Builder, mesh::Mesh, pipeline::Shader, ubo::SingleUBO},
+    model::game_objects::{Camera, MeshType, World},
+    renderer_backend::{
+        bind_group::Builder, mesh::Mesh, standard_3d_pipeline::Standard3DPipeline, ubo::SingleUBO,
+        Shader, Texture,
+    },
 };
+
+mod model;
+mod renderer_backend;
 
 // We need this for Rust to store our data correctly for the shaders
 #[repr(C)]
@@ -22,7 +26,6 @@ use crate::{
 struct ShaderParams {
     mouse: (f32, f32),
     resolution: (f32, f32),
-    camera_offset: (f32, f32, f32),
     time: f32,
 }
 
@@ -33,9 +36,6 @@ impl ShaderParams {
             self.mouse.1.to_le_bytes(),
             self.resolution.0.to_le_bytes(),
             self.resolution.1.to_le_bytes(),
-            self.camera_offset.0.to_le_bytes(),
-            self.camera_offset.1.to_le_bytes(),
-            self.camera_offset.2.to_le_bytes(),
             self.time.to_le_bytes(),
             [0; 4],
             [0; 4],
@@ -44,36 +44,6 @@ impl ShaderParams {
             [0; 4],
         ]
         .concat()
-    }
-}
-
-struct World {
-    quads: Vec<Object>,
-    camera: Camera,
-}
-
-impl World {
-    fn new() -> Self {
-        World {
-            quads: Vec::new(),
-            camera: Camera::new(),
-        }
-    }
-
-    fn update(&mut self, dt: f32, window: &mut glfw::Window) {
-        for i in 0..self.quads.len() {
-            self.quads[i].angle = self.quads[i].angle + self.quads[i].vel * dt;
-            if self.quads[i].angle > 360.0 {
-                self.quads[i].angle -= 360.0;
-            }
-        }
-
-        // let (sx, sy) = window.get_size();
-        // let mouse_pos = window.get_cursor_pos();
-        // window.set_cursor_pos(sx as f64, sy as f64);
-        // let dx = (-40.0 * mouse_pos.0 as f32 - sx as f32) / sx as f32;
-        // let dy = (-40.0 * mouse_pos.1 as f32 - sy as f32) / sy as f32;
-        // self.camera.spin(dx / 100.0, dy / 100.0);
     }
 }
 
@@ -92,16 +62,13 @@ struct State<'a> {
     lava_lamp_pipeline: wgpu::RenderPipeline,
     loading_animation_pipeline: wgpu::RenderPipeline,
     map_pipeline: wgpu::RenderPipeline,
-    texture_pipeline: wgpu::RenderPipeline,
-    wireframe_texture_pipeline: wgpu::RenderPipeline,
+    standard_3d_pipeline: Standard3DPipeline,
     full_screen_mesh: Mesh,
     fun_quad_meshes: HashMap<usize, Mesh>,
     cube_mesh: Mesh,
     fun_quad_material: SpriteMaterial,
 
     ubo: Option<UBO>,
-
-    projection_ubo: UBO,
 
     common_shader_info: SingleUBO,
 
@@ -114,7 +81,7 @@ enum PipelineSelector {
     Lava,
     Loading,
     Map,
-    Texture,
+    World3d,
 }
 
 impl<'a> State<'a> {
@@ -138,7 +105,10 @@ impl<'a> State<'a> {
         let device_descriptor = wgpu::DeviceDescriptor {
             required_features: wgpu::Features::POLYGON_MODE_LINE
                 | wgpu::Features::POLYGON_MODE_POINT,
-            required_limits: wgpu::Limits::default(),
+            required_limits: wgpu::Limits {
+                max_bind_groups: 8,
+                ..Default::default()
+            },
             memory_hints: wgpu::MemoryHints::Performance,
             label: Some("Device"),
         };
@@ -196,7 +166,6 @@ impl<'a> State<'a> {
             mouse: (450.0, 360.0),
             time: 0.0,
             resolution: (100.0, 100.0),
-            camera_offset: (0.0, 0.0, 0.0),
         };
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -225,7 +194,7 @@ impl<'a> State<'a> {
             let shader = Shader::from_path("src/shaders/cells.wgsl");
             builder.add_bind_group_layout(&time_etc_data_bind_group);
             builder.add_bind_group_layout(&ubo_bind_group_layout);
-            builder.build("Lava Lamp Pipeline", &shader, config.format)
+            builder.build_pipeline("Lava Lamp Pipeline", &shader, config.format, true)
         };
 
         let loading_animation_pipeline = {
@@ -233,7 +202,7 @@ impl<'a> State<'a> {
             let shader = Shader::from_path("src/shaders/loading.wgsl");
             builder.add_bind_group_layout(&time_etc_data_bind_group);
             builder.add_bind_group_layout(&ubo_bind_group_layout);
-            builder.build("Lava Lamp Pipeline", &shader, config.format)
+            builder.build_pipeline("Lava Lamp Pipeline", &shader, config.format, true)
         };
 
         let map_pipeline = {
@@ -241,35 +210,16 @@ impl<'a> State<'a> {
             let shader = Shader::from_path("src/shaders/map.wgsl");
             builder.add_bind_group_layout(&time_etc_data_bind_group);
             builder.add_bind_group_layout(&ubo_bind_group_layout);
-            builder.build("Map Pipeline", &shader, config.format)
+            builder.build_pipeline("Map Pipeline", &shader, config.format, true)
         };
 
-        let camera_projection_bind_group_layout = {
-            let mut builder = bind_group_layout::Builder::new(&device);
-            builder.add_ubo();
-            builder.build("Camera Projection UBO")
-        };
-
-        let texture_pipeline = {
-            let mut builder = pipeline::Builder::new(&device);
-            let shader = Shader::from_path("src/shaders/texture.wgsl");
-            builder.add_bind_group_layout(&ubo_bind_group_layout);
-            builder.add_bind_group_layout(&material_bind_group_layout);
-            builder.add_bind_group_layout(&time_etc_data_bind_group);
-            builder.add_bind_group_layout(&camera_projection_bind_group_layout);
-            builder.build("Texture Pipeline", &shader, config.format)
-        };
-
-        let wireframe_texture_pipeline = {
-            let mut builder = pipeline::Builder::new(&device);
-            let shader = Shader::from_path("src/shaders/texture.wgsl");
-            builder.add_bind_group_layout(&ubo_bind_group_layout);
-            builder.add_bind_group_layout(&material_bind_group_layout);
-            builder.add_bind_group_layout(&time_etc_data_bind_group);
-            builder.add_bind_group_layout(&camera_projection_bind_group_layout);
-            builder.wireframes();
-            builder.build("Texture Pipeline", &shader, config.format)
-        };
+        let standard_3d_pipeline = Standard3DPipeline::new(
+            &device,
+            &ubo_bind_group_layout,
+            &material_bind_group_layout,
+            &time_etc_data_bind_group,
+            &config,
+        );
 
         let fun_quad_material = SpriteMaterial::new(
             "img/invincible.jpg",
@@ -286,8 +236,6 @@ impl<'a> State<'a> {
             builder.build("uniform buffer")
         };
 
-        let projection_ubo = UBO::new(&device, 1, camera_projection_bind_group_layout);
-
         Self {
             time: 0.0,
             paused: false,
@@ -302,21 +250,18 @@ impl<'a> State<'a> {
             lava_lamp_pipeline,
             loading_animation_pipeline,
             map_pipeline,
-            texture_pipeline,
-            wireframe_texture_pipeline,
+            standard_3d_pipeline,
             full_screen_mesh: full_screen_quad_mesh,
             cube_mesh,
             fun_quad_meshes,
             fun_quad_material,
             ubo: None,
-            projection_ubo,
-
             common_shader_info: SingleUBO {
                 buffer: uniform_buffer,
                 bind_group: uniform_bind_group,
             },
 
-            pipeline_selector: PipelineSelector::Texture,
+            pipeline_selector: PipelineSelector::World3d,
             draw_wireframes: false,
         }
     }
@@ -327,6 +272,8 @@ impl<'a> State<'a> {
             self.config.width = new_size.0 as u32;
             self.config.height = new_size.1 as u32;
             self.surface.configure(&self.device, &self.config);
+            self.standard_3d_pipeline
+                .redraw_depth_texture(&self.device, &self.config);
         }
     }
 
@@ -389,13 +336,11 @@ impl<'a> State<'a> {
     }
 
     fn draw_texture(&mut self, rp: &mut wgpu::RenderPass, quads: &Vec<Object>) {
-        if self.draw_wireframes {
-            rp.set_pipeline(&self.wireframe_texture_pipeline)
-        } else {
-            rp.set_pipeline(&self.texture_pipeline);
-        }
+        self.standard_3d_pipeline
+            .set_draw_wireframes(self.draw_wireframes);
+        rp.set_pipeline(self.standard_3d_pipeline.pipeline());
         rp.set_bind_group(2, &self.common_shader_info.bind_group, &[]);
-        rp.set_bind_group(3, self.projection_ubo.bind_group(0), &[]);
+        self.standard_3d_pipeline.set_bindings(rp);
 
         {
             for i in 0..quads.len() {
@@ -429,47 +374,24 @@ impl<'a> State<'a> {
         }
     }
 
-    fn update_projection(&mut self, camera: &Camera) {
+    fn update_projection(&mut self, camera: &mut Camera) {
         let z = (self.time / 9.0).sin() * 20.0;
+        let y = (self.time / 6.0).sin() * 9.0 + 10.0;
         let x = (self.time / 9.0).cos() * 20.0;
 
         let tz = (self.time / 4.0).sin() * 2.0;
         let tx = (self.time / 4.0).cos() * 2.0;
 
         let target = Vec3::new(tx, 0.0, tz);
-        let eye = Vec3::new(x, 19.0, z);
+        let eye = Vec3::new(x, y, z);
 
-        let up = Vec3::new(0.0, 1.0, 0.0);
+        camera.target = target;
+        camera.eye = eye;
 
-        let zaxis = normalize(eye - target); // forward vector
-        let xaxis = normalize(cross(up, zaxis)); // The "right" vector.
-        let yaxis = normalize(cross(zaxis, xaxis)); // The "up" vector.
+        let view_proj = camera.to_projection_matrix(self.window);
 
-        let orientation = Matrix4::new(
-            Vec4::new(xaxis.x, yaxis.x, zaxis.x, 0.0),
-            Vec4::new(xaxis.y, yaxis.y, zaxis.y, 0.0),
-            Vec4::new(xaxis.z, yaxis.z, zaxis.z, 0.0),
-            Vec4::new(0.0, 0.0, 0.0, 1.0),
-        );
-
-        let translation = Matrix4::new(
-            Vec4::new(1.0, 0.0, 0.0, 0.0),
-            Vec4::new(0.0, 1.0, 0.0, 0.0),
-            Vec4::new(0.0, 0.0, 1.0, 0.0),
-            Vec4::new(-eye.x, -eye.y, -eye.z, 1.0),
-        );
-
-        let view = orientation * translation;
-
-        let fov_y: f32 = radians(40.0);
-        let (sx, sy) = self.window.get_size();
-        let aspect = sx as f32 / sy as f32;
-        let z_near = 0.1;
-        let z_far = 100.0;
-        let projection = ext::perspective(fov_y, aspect, z_near, z_far);
-
-        let view_proj = projection * view;
-        self.projection_ubo.upload(0, &view_proj, &self.queue);
+        self.standard_3d_pipeline
+            .upload_camera_matrix(&view_proj, &self.queue);
     }
 
     fn render(&mut self, world: &mut World) -> Result<(), wgpu::SurfaceError> {
@@ -481,9 +403,7 @@ impl<'a> State<'a> {
 
         self.device.poll(wgpu::Maintain::wait());
 
-        world.camera.spin(0.04, 0.0);
-
-        self.update_projection(&world.camera);
+        self.update_projection(&mut world.camera);
 
         let mouse_pos = self.window.get_cursor_pos();
 
@@ -496,11 +416,6 @@ impl<'a> State<'a> {
             resolution: (
                 self.window.get_size().0 as f32,
                 self.window.get_size().1 as f32,
-            ),
-            camera_offset: (
-                world.camera.position.x,
-                world.camera.position.y,
-                world.camera.position.z,
             ),
         };
 
@@ -520,6 +435,15 @@ impl<'a> State<'a> {
             self.device.poll(maintain);
         }
 
+        let depth_stencil_attachment = Some(wgpu::RenderPassDepthStencilAttachment {
+            view: &self.standard_3d_pipeline.depth_texture.view,
+            depth_ops: Some(wgpu::Operations {
+                load: wgpu::LoadOp::Clear(1.0),
+                store: wgpu::StoreOp::Store,
+            }),
+            stencil_ops: None,
+        });
+
         let drawable = self.surface.get_current_texture()?;
         let render_pass_descriptor = wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
@@ -530,15 +454,15 @@ impl<'a> State<'a> {
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.75,
-                        g: 0.5,
-                        b: 0.25,
+                        r: 0.2,
+                        g: 0.2,
+                        b: 0.2,
                         a: 1.0,
                     }),
                     store: wgpu::StoreOp::Store,
                 },
             })],
-            depth_stencil_attachment: None,
+            depth_stencil_attachment,
             occlusion_query_set: None,
             timestamp_writes: None,
         };
@@ -562,7 +486,7 @@ impl<'a> State<'a> {
                 PipelineSelector::Map => {
                     self.draw_map(&mut renderpass);
                 }
-                PipelineSelector::Texture => {
+                PipelineSelector::World3d => {
                     self.draw_texture(&mut renderpass, &mut world.quads);
                 }
             }
@@ -603,31 +527,35 @@ async fn run() {
     // Build world
     let mut world = World::new();
     world.quads.push(Object {
-        position: Vec3::new(0.0, 0.0, -9.0),
+        position: Vec3::new(0.0, 6.0, -9.0),
         angle: 0.0,
         vel: 0.0,
         mesh_type: MeshType::Polygon(9),
+        should_animate: false,
     });
     world.quads.push(Object {
-        position: Vec3::new(0.0, 0.0, -5.6),
+        position: Vec3::new(0.0, 4.0, -5.6),
         angle: 0.0,
         vel: 0.0,
         mesh_type: MeshType::Polygon(3),
+        should_animate: false,
     });
     world.quads.push(Object {
-        position: Vec3::new(0.2, 0.3, -4.8),
+        position: Vec3::new(0.2, 5.3, -4.8),
         angle: 0.4,
         vel: 0.0,
         mesh_type: MeshType::Polygon(6),
+        should_animate: false,
     });
 
-    for x in (0..20).step_by(2) {
-        for z in (0..20).step_by(3) {
+    for x in (-10..10).step_by(2) {
+        for z in (-15..15).step_by(3) {
             world.quads.push(Object {
                 position: Vec3::new(x as f32, 0.0, z as f32),
                 angle: 0.0,
                 vel: (x * z) as f32 / 100000.0,
                 mesh_type: MeshType::Cube,
+                should_animate: true,
             });
         }
     }
@@ -638,6 +566,7 @@ async fn run() {
             angle: 0.0,
             vel: 0.0,
             mesh_type: MeshType::Cube,
+            should_animate: false,
         });
     }
 
@@ -646,7 +575,7 @@ async fn run() {
     while !state.window.should_close() {
         glfw.poll_events();
 
-        world.update(16.67, state.window);
+        world.update(16.67 / 1000.0, state.window);
 
         for (_, event) in glfw::flush_messages(&events) {
             match event {

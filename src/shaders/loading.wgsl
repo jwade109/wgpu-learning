@@ -1,11 +1,10 @@
-@group(0) @binding(0) var<uniform> uniform_data: ShaderParams;
+// import("common.wgsl")
+
+@group(0) @binding(0) var<uniform> params: ShaderParams;
 
 struct ShaderParams {
     mouse_pos: vec2<f32>,
     resolution: vec2<f32>,
-    camera_offset_x: f32,
-    camera_offset_y: f32,
-    camera_offset_z: f32,
     time: f32,
 }
 
@@ -54,32 +53,75 @@ fn smin( a: f32, b: f32, k: f32 ) -> f32
     return -k*log2(r);
 }
 
+fn random(p: vec2<f32>) -> f32 {
+    return fract(sin(dot(p, vec2<f32>(12.9898,78.233))) * 43758.5453123);
+}
+
+fn noise(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+
+    // Four corners in 2D of a tile
+    let a = random(i);
+    let b = random(i + vec2<f32>(1.0, 0.0));
+    let c = random(i + vec2<f32>(0.0, 1.0));
+    let d = random(i + vec2<f32>(1.0, 1.0));
+
+    // Smooth Interpolation
+
+    // Cubic Hermine Curve.  Same as SmoothStep()
+    let u = f*f*(3.0-2.0*f);
+    // u = smoothstep(0.,1.,f);
+
+    // Mix 4 coorners percentages
+    return mix(a, b, u.x) +
+            (c - a)* u.y * (1.0 - u.x) +
+            (d - b) * u.x * u.y;
+}
+
+fn better_noise(p: vec2<f32>) -> f32
+{
+    return noise(p * 10.0) * 0.5 +
+           noise(p * 500.0) * 0.2 +
+           noise(p * 1000.0) * 0.1 +
+           noise(p * 2000.0) * 0.1 +
+           noise(p * 5000.0) * 0.05;
+}
+
+fn sdf_pie(o: vec2<f32>, t: f32, angle: f32, r: f32) -> f32 {
+    let c = vec2<f32>(sin(t), cos(t));
+    var p = o;
+    p.x = abs(p.x);
+    p = vec2<f32>(
+        p.x * cos(angle) - p.y * sin(angle),
+        p.x * sin(angle) + p.y * sin(angle)
+    );
+    let l = length(p) - r;
+    let m = length(p-c*clamp(dot(p,c),0.0,r)); // c=sin/cos of aperture
+    return max(l,m*sign(c.y*p.x-c.x*p.y));
+}
+
+fn sdf_circle(p: vec2<f32>, center: vec2<f32>, radius: f32) -> f32 {
+    let d = length(p - center);
+    return d - radius;
+}
+
 @fragment
 fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
 
-    let t = loop_anim(uniform_data.time, 3.0) - 1.0;
+    var uv = (in.position.xy * 2.0 - params.resolution) / params.resolution.y;
 
-    let v = 30.0;
+    let t = 3.0*(0.5+0.5*cos(params.time * 0.52));
 
-    var d = 10000000000.0;
-    let p = in.position.xy;
+    let r = 0.3;
+    let d = sdf_pie(uv, 0.3, params.time, r);
 
-    {
-        let center = vec2<f32>(800.0, 800.0);
-        let r_upper = 100.0 + t * 10.0 * v;
-        let r_lower = 20.0 + t * 12.0 * v;
-        let d1 = sdf_ring_ul(p, center, r_lower, r_upper);
-        d = smin(d, d1, 15.0);
-    }
+    var col = vec3<f32>(0.65,0.85,1.);
+    if (d > 0) { col = vec3<f32>(0.9,0.6,0.3); }
+	col *= 1.0 - exp(-8.0*abs(d));
+	col *= 0.8 + 0.2*cos(128.0*abs(d));
+	col = mix( col, vec3(1.0), 1.0-smoothstep(0.0,0.015,abs(d)) );
+    col *= (1.0 / (1.0 + abs(d) * 100.0));
 
-    {
-        let center = vec2<f32>(1100.0, 900.0);
-        let r = vec2<f32>(300.0, 170.0);
-        let d2 = sdf_ellipse(p, center, r);
-        d = smin(d, d2, 15.0);
-    }
-
-    let c = 1.0 - smoothstep(0.0, 5.0, d);
-
-    return vec4<f32>(c, c, c, 1.0);
+    return vec4<f32>(col, 1.0);
 }

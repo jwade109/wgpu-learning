@@ -1,28 +1,6 @@
 use glm::*;
 use wgpu::util::DeviceExt;
 
-pub const X3: Vec3 = Vec3 {
-    x: 1.0,
-    y: 0.0,
-    z: 0.0,
-};
-
-pub const Y3: Vec3 = Vec3 {
-    x: 0.0,
-    y: 1.0,
-    z: 0.0,
-};
-
-pub const Z3: Vec3 = Vec3 {
-    x: 0.0,
-    y: 0.0,
-    z: 1.0,
-};
-
-pub const X2: Vec2 = Vec2 { x: 1.0, y: 0.0 };
-
-pub const Y2: Vec2 = Vec2 { x: 0.0, y: 1.0 };
-
 pub struct Mesh {
     buffer: wgpu::Buffer,
     offset: u64,
@@ -211,7 +189,7 @@ pub fn make_cube(device: &wgpu::Device, color: Vec3) -> Mesh {
     ];
 
     let indices = [
-        quad_indices_to_tris(0, 1, 2, 3),
+        quad_indices_to_tris(3, 2, 1, 0),
         quad_indices_to_tris(4, 5, 6, 7),
         quad_indices_to_tris(0, 1, 5, 4),
         quad_indices_to_tris(2, 3, 7, 6),

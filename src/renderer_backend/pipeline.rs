@@ -1,24 +1,4 @@
-use std::fs;
-
-use crate::renderer_backend::mesh::Vertex;
-
-#[derive(Default)]
-pub struct Shader {
-    pub contents: String,
-    pub vertex_entry: String,
-    pub fragment_entry: String,
-}
-
-impl Shader {
-    pub fn from_path(path: &str) -> Self {
-        let source_code = fs::read_to_string(path).expect("Can't read source code!");
-        Self {
-            contents: source_code,
-            vertex_entry: "vs_main".to_string(),
-            fragment_entry: "fs_main".to_string(),
-        }
-    }
-}
+use crate::renderer_backend::{mesh::Vertex, Shader, Texture};
 
 pub struct Builder<'a> {
     vertex_buffer_layouts: Vec<wgpu::VertexBufferLayout<'static>>,
@@ -53,11 +33,12 @@ impl<'a> Builder<'a> {
         self.draw_wireframes = true;
     }
 
-    pub fn build(
+    pub fn build_pipeline(
         mut self,
         label: &str,
         shader: &Shader,
         pixel_format: wgpu::TextureFormat,
+        has_depth_stencil: bool,
     ) -> wgpu::RenderPipeline {
         self.vertex_buffer_layouts.push(Vertex::get_layout());
 
@@ -72,6 +53,14 @@ impl<'a> Builder<'a> {
             self.device
                 .create_pipeline_layout(&pipeline_layout_descriptor)
         };
+
+        let depth_stencil = has_depth_stencil.then(|| wgpu::DepthStencilState {
+            format: Texture::DEPTH_FORMAT,
+            depth_write_enabled: true,
+            depth_compare: wgpu::CompareFunction::Less,
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        });
 
         let render_pipeline_descriptor = wgpu::RenderPipelineDescriptor {
             label: Some(label),
@@ -90,7 +79,7 @@ impl<'a> Builder<'a> {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
+                cull_mode: Some(wgpu::Face::Back),
                 polygon_mode: if self.draw_wireframes {
                     wgpu::PolygonMode::Line
                 } else {
@@ -111,7 +100,8 @@ impl<'a> Builder<'a> {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
 
-            depth_stencil: None,
+            depth_stencil,
+
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
