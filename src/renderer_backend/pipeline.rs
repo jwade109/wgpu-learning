@@ -24,6 +24,7 @@ pub struct Builder<'a> {
     vertex_buffer_layouts: Vec<wgpu::VertexBufferLayout<'static>>,
     bind_group_layouts: Vec<&'a wgpu::BindGroupLayout>,
     device: &'a wgpu::Device,
+    draw_wireframes: bool,
 }
 
 fn make_shader_module(device: &wgpu::Device, shader: &Shader, label: &str) -> wgpu::ShaderModule {
@@ -40,11 +41,16 @@ impl<'a> Builder<'a> {
             vertex_buffer_layouts: Vec::new(),
             bind_group_layouts: Vec::new(),
             device: device,
+            draw_wireframes: false,
         }
     }
 
     pub fn add_bind_group_layout(&mut self, layout: &'a wgpu::BindGroupLayout) {
         self.bind_group_layouts.push(layout);
+    }
+
+    pub fn wireframes(&mut self) {
+        self.draw_wireframes = true;
     }
 
     pub fn build(
@@ -85,7 +91,11 @@ impl<'a> Builder<'a> {
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: None,
-                polygon_mode: wgpu::PolygonMode::Fill,
+                polygon_mode: if self.draw_wireframes {
+                    wgpu::PolygonMode::Line
+                } else {
+                    wgpu::PolygonMode::Fill
+                },
                 unclipped_depth: false,
                 conservative: false,
             },

@@ -93,6 +93,7 @@ struct State<'a> {
     loading_animation_pipeline: wgpu::RenderPipeline,
     map_pipeline: wgpu::RenderPipeline,
     texture_pipeline: wgpu::RenderPipeline,
+    wireframe_texture_pipeline: wgpu::RenderPipeline,
     full_screen_mesh: Mesh,
     fun_quad_meshes: HashMap<usize, Mesh>,
     cube_mesh: Mesh,
@@ -105,6 +106,7 @@ struct State<'a> {
     common_shader_info: SingleUBO,
 
     pipeline_selector: PipelineSelector,
+    draw_wireframes: bool,
 }
 
 #[derive(PartialEq, Eq, Sequence)]
@@ -134,7 +136,8 @@ impl<'a> State<'a> {
         let adapter = instance.request_adapter(&adapter_descriptor).await.unwrap();
 
         let device_descriptor = wgpu::DeviceDescriptor {
-            required_features: wgpu::Features::empty(),
+            required_features: wgpu::Features::POLYGON_MODE_LINE
+                | wgpu::Features::POLYGON_MODE_POINT,
             required_limits: wgpu::Limits::default(),
             memory_hints: wgpu::MemoryHints::Performance,
             label: Some("Device"),
@@ -257,6 +260,17 @@ impl<'a> State<'a> {
             builder.build("Texture Pipeline", &shader, config.format)
         };
 
+        let wireframe_texture_pipeline = {
+            let mut builder = pipeline::Builder::new(&device);
+            let shader = Shader::from_path("src/shaders/texture.wgsl");
+            builder.add_bind_group_layout(&ubo_bind_group_layout);
+            builder.add_bind_group_layout(&material_bind_group_layout);
+            builder.add_bind_group_layout(&time_etc_data_bind_group);
+            builder.add_bind_group_layout(&camera_projection_bind_group_layout);
+            builder.wireframes();
+            builder.build("Texture Pipeline", &shader, config.format)
+        };
+
         let fun_quad_material = SpriteMaterial::new(
             "img/invincible.jpg",
             &device,
@@ -289,6 +303,7 @@ impl<'a> State<'a> {
             loading_animation_pipeline,
             map_pipeline,
             texture_pipeline,
+            wireframe_texture_pipeline,
             full_screen_mesh: full_screen_quad_mesh,
             cube_mesh,
             fun_quad_meshes,
@@ -302,6 +317,7 @@ impl<'a> State<'a> {
             },
 
             pipeline_selector: PipelineSelector::Texture,
+            draw_wireframes: false,
         }
     }
 
@@ -373,7 +389,11 @@ impl<'a> State<'a> {
     }
 
     fn draw_texture(&mut self, rp: &mut wgpu::RenderPass, quads: &Vec<Object>) {
-        rp.set_pipeline(&self.texture_pipeline);
+        if self.draw_wireframes {
+            rp.set_pipeline(&self.wireframe_texture_pipeline)
+        } else {
+            rp.set_pipeline(&self.texture_pipeline);
+        }
         rp.set_bind_group(2, &self.common_shader_info.bind_group, &[]);
         rp.set_bind_group(3, self.projection_ubo.bind_group(0), &[]);
 
@@ -410,12 +430,14 @@ impl<'a> State<'a> {
     }
 
     fn update_projection(&mut self, camera: &Camera) {
+        let z = (self.time / 9.0).sin() * 20.0;
+        let x = (self.time / 9.0).cos() * 20.0;
 
-        let z = (self.time / 3.0).sin() * 5.0;
-        let x = (self.time / 3.0).cos() * 5.0;
+        let tz = (self.time / 4.0).sin() * 2.0;
+        let tx = (self.time / 4.0).cos() * 2.0;
 
-        let target = Vec3::new(0.0, 0.0, -2.0);
-        let eye = Vec3::new(x, 3.0, z);
+        let target = Vec3::new(tx, 0.0, tz);
+        let eye = Vec3::new(x, 19.0, z);
 
         let up = Vec3::new(0.0, 1.0, 0.0);
 
@@ -439,8 +461,9 @@ impl<'a> State<'a> {
 
         let view = orientation * translation;
 
-        let fov_y: f32 = radians(90.0);
-        let aspect = 4.0 / 3.0;
+        let fov_y: f32 = radians(40.0);
+        let (sx, sy) = self.window.get_size();
+        let aspect = sx as f32 / sy as f32;
         let z_near = 0.1;
         let z_far = 100.0;
         let projection = ext::perspective(fov_y, aspect, z_near, z_far);
@@ -597,12 +620,26 @@ async fn run() {
         vel: 0.0,
         mesh_type: MeshType::Polygon(6),
     });
-    world.quads.push(Object {
-        position: Vec3::new(-0.4, 0.6, -0.0),
-        angle: 0.0,
-        vel: 0.0,
-        mesh_type: MeshType::Cube,
-    });
+
+    for x in (0..20).step_by(2) {
+        for z in (0..20).step_by(3) {
+            world.quads.push(Object {
+                position: Vec3::new(x as f32, 0.0, z as f32),
+                angle: 0.0,
+                vel: (x * z) as f32 / 100000.0,
+                mesh_type: MeshType::Cube,
+            });
+        }
+    }
+
+    for y in (3..20).step_by(2) {
+        world.quads.push(Object {
+            position: Vec3::new(0.0, y as f32, 0.0),
+            angle: 0.0,
+            vel: 0.0,
+            mesh_type: MeshType::Cube,
+        });
+    }
 
     state.build_ubos_for_objects(world.quads.len());
 
@@ -619,6 +656,9 @@ async fn run() {
                 }
                 glfw::WindowEvent::Key(Key::Space, _, Action::Press, _) => {
                     state.paused ^= true;
+                }
+                glfw::WindowEvent::Key(Key::Z, _, Action::Press, _) => {
+                    state.draw_wireframes ^= true;
                 }
                 glfw::WindowEvent::Key(Key::Right, _, Action::Press, _) => {
                     state.pipeline_selector = enum_iterator::next_cycle(&state.pipeline_selector);

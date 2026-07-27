@@ -196,9 +196,9 @@ fn quad_indices_to_tris(a: u16, b: u16, c: u16, d: u16) -> [u16; 6] {
 }
 
 pub fn make_cube(device: &wgpu::Device, color: Vec3) -> Mesh {
-    let x = 1.5;
-    let y = 2.0;
-    let z = 1.0;
+    let x = 0.5;
+    let y = 0.5;
+    let z = 0.5;
     let vertices = vec![
         Vertex::new(Vec3::new(-x, -y, -z), color, Vec2::new(0.0, 0.0)),
         Vertex::new(Vec3::new(x, -y, -z), color, Vec2::new(1.0, 0.0)),
