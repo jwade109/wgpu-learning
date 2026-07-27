@@ -1,6 +1,28 @@
 use glm::*;
 use wgpu::util::DeviceExt;
 
+pub const X3: Vec3 = Vec3 {
+    x: 1.0,
+    y: 0.0,
+    z: 0.0,
+};
+
+pub const Y3: Vec3 = Vec3 {
+    x: 0.0,
+    y: 1.0,
+    z: 0.0,
+};
+
+pub const Z3: Vec3 = Vec3 {
+    x: 0.0,
+    y: 0.0,
+    z: 1.0,
+};
+
+pub const X2: Vec2 = Vec2 { x: 1.0, y: 0.0 };
+
+pub const Y2: Vec2 = Vec2 { x: 0.0, y: 1.0 };
+
 pub struct Mesh {
     buffer: wgpu::Buffer,
     offset: u64,
@@ -113,22 +135,22 @@ fn mesh_from_vi(device: &wgpu::Device, vertices: &[Vertex], indices: &[u16]) -> 
 pub fn make_quad(device: &wgpu::Device, size: f32) -> Mesh {
     let vertices: [Vertex; 4] = [
         Vertex::new(
-            Vec3::new(-size, -size, 1.0),
+            Vec3::new(-size, -size, 0.0),
             Vec3::new(1.0, 0.0, 0.0),
             Vec2::new(0.0, 0.0),
         ),
         Vertex::new(
-            Vec3::new(size, -size, 1.0),
+            Vec3::new(size, -size, 0.0),
             Vec3::new(0.0, 1.0, 1.0),
             Vec2::new(1.0, 0.0),
         ),
         Vertex::new(
-            Vec3::new(size, size, 1.0),
+            Vec3::new(size, size, 0.0),
             Vec3::new(0.0, 0.0, 1.0),
             Vec2::new(1.0, 1.0),
         ),
         Vertex::new(
-            Vec3::new(-size, size, 1.0),
+            Vec3::new(-size, size, 0.0),
             Vec3::new(1.0, 0.0, 1.0),
             Vec2::new(0.0, 1.0),
         ),
@@ -148,7 +170,7 @@ pub fn make_n_gon(device: &wgpu::Device, n: usize) -> Mesh {
             (a, x, y)
         })
         .map(|(a, x, y)| {
-            let pos = Vec3::new(x, y, 1.0);
+            let pos = Vec3::new(x, y, 0.0);
             let r = a.sin() * 0.5 + 0.5;
             let g = a.cos() * 0.5 + 0.5;
             let b = (a * 0.5).sin() * 0.5 + 0.5;
@@ -165,6 +187,38 @@ pub fn make_n_gon(device: &wgpu::Device, n: usize) -> Mesh {
         })
         .collect::<Vec<_>>()
         .concat();
+
+    mesh_from_vi(device, &vertices, &indices)
+}
+
+fn quad_indices_to_tris(a: u16, b: u16, c: u16, d: u16) -> [u16; 6] {
+    [a, b, c, a, c, d]
+}
+
+pub fn make_cube(device: &wgpu::Device, color: Vec3) -> Mesh {
+    let x = 1.5;
+    let y = 2.0;
+    let z = 1.0;
+    let vertices = vec![
+        Vertex::new(Vec3::new(-x, -y, -z), color, Vec2::new(0.0, 0.0)),
+        Vertex::new(Vec3::new(x, -y, -z), color, Vec2::new(1.0, 0.0)),
+        Vertex::new(Vec3::new(x, y, -z), color, Vec2::new(1.0, 1.0)),
+        Vertex::new(Vec3::new(-x, y, -z), color, Vec2::new(0.0, 1.0)),
+        Vertex::new(Vec3::new(-x, -y, z), color, Vec2::new(0.0, 0.0)),
+        Vertex::new(Vec3::new(x, -y, z), color, Vec2::new(1.0, 0.0)),
+        Vertex::new(Vec3::new(x, y, z), color, Vec2::new(1.0, 1.0)),
+        Vertex::new(Vec3::new(-x, y, z), color, Vec2::new(0.0, 1.0)),
+    ];
+
+    let indices = [
+        quad_indices_to_tris(0, 1, 2, 3),
+        quad_indices_to_tris(4, 5, 6, 7),
+        quad_indices_to_tris(0, 1, 5, 4),
+        quad_indices_to_tris(2, 3, 7, 6),
+        quad_indices_to_tris(3, 0, 4, 7),
+        quad_indices_to_tris(1, 2, 6, 5),
+    ]
+    .concat();
 
     mesh_from_vi(device, &vertices, &indices)
 }

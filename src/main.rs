@@ -1,3 +1,4 @@
+use glm::*;
 use std::collections::HashMap;
 
 use enum_iterator::Sequence;
@@ -6,12 +7,11 @@ mod renderer_backend;
 use renderer_backend::{bind_group_layout, material::SpriteMaterial, mesh, pipeline, ubo::UBO};
 mod model;
 use clap::Parser;
-use glm::ext;
 use model::game_objects::Object;
 use wgpu::util::DeviceExt;
 
 use crate::{
-    model::game_objects::Camera,
+    model::game_objects::{Camera, MeshType},
     renderer_backend::{bind_group::Builder, mesh::Mesh, pipeline::Shader, ubo::SingleUBO},
 };
 
@@ -49,7 +49,6 @@ impl ShaderParams {
 
 struct World {
     quads: Vec<Object>,
-    tris: Vec<Object>,
     camera: Camera,
 }
 
@@ -57,18 +56,11 @@ impl World {
     fn new() -> Self {
         World {
             quads: Vec::new(),
-            tris: Vec::new(),
             camera: Camera::new(),
         }
     }
 
     fn update(&mut self, dt: f32, window: &mut glfw::Window) {
-        for i in 0..self.tris.len() {
-            self.tris[i].angle = self.tris[i].angle + self.tris[i].vel * dt;
-            if self.tris[i].angle > 360.0 {
-                self.tris[i].angle -= 360.0;
-            }
-        }
         for i in 0..self.quads.len() {
             self.quads[i].angle = self.quads[i].angle + self.quads[i].vel * dt;
             if self.quads[i].angle > 360.0 {
@@ -76,12 +68,12 @@ impl World {
             }
         }
 
-        // let pos = window.get_cursor_pos();
-        // window.set_cursor_pos(400.0, 400.0);
-        // let dx = (-40.0 * (pos.0 - 400.0) / 400.0) as f32;
-        // let dy = (-40.0 * (pos.1 - 400.0) / 400.0) as f32;
-
-        // self.camera.spin(dx, dy);
+        // let (sx, sy) = window.get_size();
+        // let mouse_pos = window.get_cursor_pos();
+        // window.set_cursor_pos(sx as f64, sy as f64);
+        // let dx = (-40.0 * mouse_pos.0 as f32 - sx as f32) / sx as f32;
+        // let dy = (-40.0 * mouse_pos.1 as f32 - sy as f32) / sy as f32;
+        // self.camera.spin(dx / 100.0, dy / 100.0);
     }
 }
 
@@ -102,11 +94,13 @@ struct State<'a> {
     map_pipeline: wgpu::RenderPipeline,
     texture_pipeline: wgpu::RenderPipeline,
     full_screen_mesh: Mesh,
-
     fun_quad_meshes: HashMap<usize, Mesh>,
+    cube_mesh: Mesh,
     fun_quad_material: SpriteMaterial,
 
     ubo: Option<UBO>,
+
+    projection_ubo: UBO,
 
     common_shader_info: SingleUBO,
 
@@ -173,6 +167,8 @@ impl<'a> State<'a> {
         let full_screen_quad_mesh = mesh::make_quad(&device, 1.0);
 
         let mut fun_quad_meshes = HashMap::new();
+
+        let cube_mesh = mesh::make_cube(&device, Vec3::new(1.0, 0.6, 0.6));
 
         for n_sides in 3..=70 {
             let mesh = mesh::make_n_gon(&device, n_sides);
@@ -245,12 +241,19 @@ impl<'a> State<'a> {
             builder.build("Map Pipeline", &shader, config.format)
         };
 
+        let camera_projection_bind_group_layout = {
+            let mut builder = bind_group_layout::Builder::new(&device);
+            builder.add_ubo();
+            builder.build("Camera Projection UBO")
+        };
+
         let texture_pipeline = {
             let mut builder = pipeline::Builder::new(&device);
             let shader = Shader::from_path("src/shaders/texture.wgsl");
             builder.add_bind_group_layout(&ubo_bind_group_layout);
             builder.add_bind_group_layout(&material_bind_group_layout);
             builder.add_bind_group_layout(&time_etc_data_bind_group);
+            builder.add_bind_group_layout(&camera_projection_bind_group_layout);
             builder.build("Texture Pipeline", &shader, config.format)
         };
 
@@ -269,6 +272,8 @@ impl<'a> State<'a> {
             builder.build("uniform buffer")
         };
 
+        let projection_ubo = UBO::new(&device, 1, camera_projection_bind_group_layout);
+
         Self {
             time: 0.0,
             paused: false,
@@ -285,9 +290,11 @@ impl<'a> State<'a> {
             map_pipeline,
             texture_pipeline,
             full_screen_mesh: full_screen_quad_mesh,
+            cube_mesh,
             fun_quad_meshes,
             fun_quad_material,
             ubo: None,
+            projection_ubo,
 
             common_shader_info: SingleUBO {
                 buffer: uniform_buffer,
@@ -365,22 +372,14 @@ impl<'a> State<'a> {
         rp.draw_indexed(0..self.full_screen_mesh.index_count(), 0, 0..1);
     }
 
-    fn draw_texture(&mut self, rp: &mut wgpu::RenderPass, quads: &Vec<Object>, tris: &Vec<Object>) {
+    fn draw_texture(&mut self, rp: &mut wgpu::RenderPass, quads: &Vec<Object>) {
         rp.set_pipeline(&self.texture_pipeline);
         rp.set_bind_group(2, &self.common_shader_info.bind_group, &[]);
-
-        // upload transforms to UBO
-        let c0 = glm::Vec4::new(1.0, 0.0, 0.0, 0.0);
-        let c1 = glm::Vec4::new(0.0, 1.0, 0.0, 0.0);
-        let c2 = glm::Vec4::new(0.0, 0.0, 1.0, 0.0);
-        let c3 = glm::Vec4::new(0.0, 0.0, 0.0, 1.0);
-        let m1 = glm::Matrix4::new(c0, c1, c2, c3);
-        let m2 = glm::Matrix4::new(c0, c1, c2, c3);
+        rp.set_bind_group(3, self.projection_ubo.bind_group(0), &[]);
 
         {
             for i in 0..quads.len() {
-                let matrix = ext::translate(&m1, quads[i].position)
-                    * ext::rotate(&m2, quads[i].angle, glm::Vector3::new(0.0, 0.0, 1.0));
+                let matrix = quads[i].get_transform_matrix();
                 self.ubo
                     .as_mut()
                     .unwrap()
@@ -398,14 +397,56 @@ impl<'a> State<'a> {
                 .flatten()
                 .unwrap();
 
-            let n_sides = quads[i].n_sides;
-            let mesh = self.fun_quad_meshes.get(&n_sides).unwrap();
+            let mesh = match quads[i].mesh_type {
+                MeshType::Polygon(n_sides) => self.fun_quad_meshes.get(&n_sides).unwrap(),
+                MeshType::Cube => &self.cube_mesh,
+            };
 
             mesh.set_as_active(rp);
 
             rp.set_bind_group(0, bg, &[]);
             rp.draw_indexed(0..mesh.index_count(), 0, 0..1);
         }
+    }
+
+    fn update_projection(&mut self, camera: &Camera) {
+
+        let z = (self.time / 3.0).sin() * 5.0;
+        let x = (self.time / 3.0).cos() * 5.0;
+
+        let target = Vec3::new(0.0, 0.0, -2.0);
+        let eye = Vec3::new(x, 3.0, z);
+
+        let up = Vec3::new(0.0, 1.0, 0.0);
+
+        let zaxis = normalize(eye - target); // forward vector
+        let xaxis = normalize(cross(up, zaxis)); // The "right" vector.
+        let yaxis = normalize(cross(zaxis, xaxis)); // The "up" vector.
+
+        let orientation = Matrix4::new(
+            Vec4::new(xaxis.x, yaxis.x, zaxis.x, 0.0),
+            Vec4::new(xaxis.y, yaxis.y, zaxis.y, 0.0),
+            Vec4::new(xaxis.z, yaxis.z, zaxis.z, 0.0),
+            Vec4::new(0.0, 0.0, 0.0, 1.0),
+        );
+
+        let translation = Matrix4::new(
+            Vec4::new(1.0, 0.0, 0.0, 0.0),
+            Vec4::new(0.0, 1.0, 0.0, 0.0),
+            Vec4::new(0.0, 0.0, 1.0, 0.0),
+            Vec4::new(-eye.x, -eye.y, -eye.z, 1.0),
+        );
+
+        let view = orientation * translation;
+
+        let fov_y: f32 = radians(90.0);
+        let aspect = 4.0 / 3.0;
+        let z_near = 0.1;
+        let z_far = 100.0;
+        let projection = ext::perspective(fov_y, aspect, z_near, z_far);
+
+        let view_proj = projection * view;
+        self.projection_ubo.upload(0, &view_proj, &self.queue);
     }
 
     fn render(&mut self, world: &mut World) -> Result<(), wgpu::SurfaceError> {
@@ -416,6 +457,10 @@ impl<'a> State<'a> {
         }
 
         self.device.poll(wgpu::Maintain::wait());
+
+        world.camera.spin(0.04, 0.0);
+
+        self.update_projection(&world.camera);
 
         let mouse_pos = self.window.get_cursor_pos();
 
@@ -438,16 +483,7 @@ impl<'a> State<'a> {
 
         if !self.paused {
             self.time += 0.005;
-
-            for quad in world.quads.iter_mut() {
-                let t = (self.time * 10.0).floor() as usize;
-                let n = t % 68 + 3;
-                quad.n_sides = n;
-            }
         }
-
-        let delta = (world.camera.target_position - world.camera.position) * 0.08;
-        world.camera.position = world.camera.position + delta;
 
         self.queue.write_buffer(
             &self.common_shader_info.buffer,
@@ -504,7 +540,7 @@ impl<'a> State<'a> {
                     self.draw_map(&mut renderpass);
                 }
                 PipelineSelector::Texture => {
-                    self.draw_texture(&mut renderpass, &mut world.quads, &world.tris);
+                    self.draw_texture(&mut renderpass, &mut world.quads);
                 }
             }
         }
@@ -544,22 +580,28 @@ async fn run() {
     // Build world
     let mut world = World::new();
     world.quads.push(Object {
-        position: glm::Vec3::new(0.0, 0.0, 0.0),
+        position: Vec3::new(0.0, 0.0, -9.0),
         angle: 0.0,
-        vel: 0.00002,
-        n_sides: 9,
+        vel: 0.0,
+        mesh_type: MeshType::Polygon(9),
     });
     world.quads.push(Object {
-        position: glm::Vec3::new(0.2, 0.3, -0.5),
-        angle: 0.3,
-        vel: 0.00001,
-        n_sides: 9,
+        position: Vec3::new(0.0, 0.0, -5.6),
+        angle: 0.0,
+        vel: 0.0,
+        mesh_type: MeshType::Polygon(3),
     });
     world.quads.push(Object {
-        position: glm::Vec3::new(-0.4, 0.6, -0.6),
-        angle: 0.3,
-        vel: 0.00003,
-        n_sides: 9,
+        position: Vec3::new(0.2, 0.3, -4.8),
+        angle: 0.4,
+        vel: 0.0,
+        mesh_type: MeshType::Polygon(6),
+    });
+    world.quads.push(Object {
+        position: Vec3::new(-0.4, 0.6, -0.0),
+        angle: 0.0,
+        vel: 0.0,
+        mesh_type: MeshType::Cube,
     });
 
     state.build_ubos_for_objects(world.quads.len());
@@ -584,37 +626,6 @@ async fn run() {
                 glfw::WindowEvent::Key(Key::Left, _, Action::Press, _) => {
                     state.pipeline_selector =
                         enum_iterator::previous_cycle(&state.pipeline_selector);
-                }
-
-                glfw::WindowEvent::Key(Key::W, _, action, _) => {
-                    if !matches!(action, Action::Release) {
-                        world.camera.target_position.y += 0.07;
-                    }
-                }
-                glfw::WindowEvent::Key(Key::A, _, action, _) => {
-                    if !matches!(action, Action::Release) {
-                        world.camera.target_position.x -= 0.07;
-                    }
-                }
-                glfw::WindowEvent::Key(Key::S, _, action, _) => {
-                    if !matches!(action, Action::Release) {
-                        world.camera.target_position.y -= 0.07;
-                    }
-                }
-                glfw::WindowEvent::Key(Key::D, _, action, _) => {
-                    if !matches!(action, Action::Release) {
-                        world.camera.target_position.x += 0.07;
-                    }
-                }
-                glfw::WindowEvent::Key(Key::Equal, _, action, _) => {
-                    if !matches!(action, Action::Release) {
-                        world.camera.target_position.z += 0.07;
-                    }
-                }
-                glfw::WindowEvent::Key(Key::Minus, _, action, _) => {
-                    if !matches!(action, Action::Release) {
-                        world.camera.target_position.z -= 0.07;
-                    }
                 }
 
                 //Window was moved
