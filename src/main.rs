@@ -261,7 +261,7 @@ impl<'a> State<'a> {
                 bind_group: uniform_bind_group,
             },
 
-            pipeline_selector: PipelineSelector::World3d,
+            pipeline_selector: PipelineSelector::Map,
             draw_wireframes: false,
         }
     }

@@ -1,6 +1,6 @@
 // import("common.wgsl")
 
-@group(0) @binding(0) var<uniform> uniform_data: ShaderParams;
+@group(0) @binding(0) var<uniform> params: ShaderParams;
 
 struct ShaderParams {
     mouse_pos: vec2<f32>,
@@ -56,23 +56,56 @@ fn sinusoid(p: vec2<f32>) -> f32 {
     return sin(p.x);
 }
 
+const p1 = vec2<f32>(700.0, 800.0);
+const p2 = vec2<f32>(1500.0, 1200.0);
+const p3 = vec2<f32>(1700.0, 600.0);
+
+fn height_func(p: vec2<f32>) -> f32 {
+
+    return (/*hill(p, params.mouse_pos, 60.0) + */
+           hill(p, vec2<f32>(1400.0, 700.0), 45.0) +
+           range(p, p1, p2, 53.0) +
+           range(p, p2, p3, 40.0)) * (sinusoid(p / 100.0) * 0.2 + 0.8);
+}
+
+fn is_in_shadow(pz: vec3<f32>, sun: vec3<f32>) -> bool {
+    var sample = pz;
+    let u = normalize(sun - sample);
+
+    var i = 0;
+
+    while (length(sample - sun) > 5.0)
+    {
+        i += 1;
+        if (i > 50)
+        {
+            break;
+        }
+
+        sample += u;
+        let z_sample = height_func(sample.xy);
+        if (z_sample > sample.z)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 @fragment
 fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
 
-    let pix = 10.0;
+    let sun = vec3<f32>(params.mouse_pos, 200.0);
+
+    let pix = 5.0;
     let p = floor(in.position.xy / pix) * pix;
 
-    let p1 = vec2<f32>(700.0, 800.0);
-    let p2 = vec2<f32>(1500.0, 1200.0);
-    let p3 = vec2<f32>(1700.0, 600.0);
+    let z = height_func(p);
 
-    let zp = hill(p, uniform_data.mouse_pos, 60.0) +
-             hill(p, vec2<f32>(1400.0, 700.0), 45.0) +
-             range(p, p1, p2, 53.0) +
-             range(p, p2, p3, 40.0);
-             // hill(p, vec2<f32>(800.0, 1100.0), 85.0);
+    let pz = vec3<f32>(p, z);
 
-    let z = zp * (sinusoid(p / 100.0) * 0.2 + 0.8);
+    let is_in_shadow = is_in_shadow(pz, sun);
 
     var color = 0.0;
     let tol = 0.1;
@@ -87,7 +120,7 @@ fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
     var g = color;
     var b = 1.0;
 
-    let tide_level = 20.0 + 3.0 * sin(uniform_data.time / 3.0);
+    let tide_level = 20.0 + 3.0 * sin(params.time / 3.0);
 
     if (z < tide_level)
     {
@@ -104,7 +137,7 @@ fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
     }
 
     // let point_of_interest = vec2<f32>(1300.0, 900);
-    let point_of_interest = uniform_data.mouse_pos;
+    let point_of_interest = params.mouse_pos;
 
     let sdf_d = sdf_circle(p, point_of_interest, 4.0);
     let sdf_line = sdf_capsule(p, p1, p2, 3.0);
@@ -135,6 +168,13 @@ fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
         r = 0.6;
         g = 0.3;
         b = 0.3;
+    }
+
+    if (is_in_shadow)
+    {
+        r *= 0.4;
+        g *= 0.4;
+        b *= 0.4;
     }
 
     // for boundary
