@@ -15,7 +15,7 @@ struct ShaderParams {
 
 struct Vertex {
     @location(0) position: vec3<f32>,
-    @location(1) color: vec3<f32>,
+    @location(1) color: vec4<f32>,
     @location(2) tex_coord: vec2<f32>,
 };
 
@@ -36,7 +36,7 @@ fn vs_main(vertex: Vertex) -> VertexShaderOut {
     out.world_space_position = transform * vec4<f32>(vertex.position, 1.0);
     out.position = camera_projection * out.world_space_position;
     out.tex_coord = vec2<f32>(vertex.tex_coord.x, 1.0 - vertex.tex_coord.y);
-    out.color = vec4<f32>(vertex.color, 1.0);
+    out.color = vertex.color;
     return out;
 }
 
@@ -53,9 +53,7 @@ fn fs_main(in: VertexShaderOut) -> FragmentShaderOut {
 
     let d = length(l - in.world_space_position.xyz);
     let light_color = vec4<f32>(1.0, 0.8, 0.2, 1.0);
-    let l2_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
-
-    var light_strength = 0.0; // 0.8 / (1.0 + d * dropoff);
+    var light_strength = 0.0;
 
     if d < 12.0 * range {
         light_strength = 0.2;
@@ -67,14 +65,12 @@ fn fs_main(in: VertexShaderOut) -> FragmentShaderOut {
         light_strength = 1.0;
     }
 
-    var l2_strength = step(11.0 * range, d) * (1.0 - step(14.0 * range, d));
+    out.color = mix(in.color, light_color, light_strength);
 
-    out.color = mix(mix(in.color, light_color, light_strength), l2_color, l2_strength);
+    let fade_out_color = vec4<f32>(0.2, 0.2, 0.7, 1.0);
+    var fade_out_magnitude = round(smoothstep(2.0, -3.0, in.world_space_position.y) * 10.0) / 10.0;
 
-    if (in.world_space_position.y < 0.0)
-    {
-        out.color = mix(out.color, vec4<f32>(0.2, 0.2, 0.2, 0.0), 0.8);
-    }
+    out.color = mix(out.color, fade_out_color, fade_out_magnitude);
 
     return out;
 }

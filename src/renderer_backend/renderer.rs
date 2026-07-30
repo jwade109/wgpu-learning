@@ -1,55 +1,20 @@
-use glm::*;
-use std::collections::HashMap;
-
-use clap::Parser;
+use crate::{model::*, renderer_backend::*};
 use enum_iterator::Sequence;
-use glfw::{fail_on_errors, Action, ClientApiHint, Key, Window, WindowHint};
-use model::game_objects::Object;
-use renderer_backend::{bind_group_layout, material::SpriteMaterial, mesh, pipeline, ubo::UBO};
+use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 
-use crate::{
-    model::game_objects::{Camera, MeshType, World},
-    renderer_backend::{
-        bind_group::Builder, mesh::Mesh, standard_3d_pipeline::Standard3DPipeline, ubo::SingleUBO,
-        Shader, Texture,
-    },
-};
-
-mod model;
-mod renderer_backend;
-
-// We need this for Rust to store our data correctly for the shaders
-#[repr(C)]
-// This is so we can store this in a buffer
-#[derive(Debug, Copy, Clone)]
-struct ShaderParams {
-    mouse: (f32, f32),
-    resolution: (f32, f32),
-    time: f32,
+#[derive(PartialEq, Eq, Sequence)]
+pub enum PipelineSelector {
+    Lava,
+    Loading,
+    Map,
+    World3d,
 }
 
-impl ShaderParams {
-    fn to_bytes(&self) -> Vec<u8> {
-        [
-            self.mouse.0.to_le_bytes(),
-            self.mouse.1.to_le_bytes(),
-            self.resolution.0.to_le_bytes(),
-            self.resolution.1.to_le_bytes(),
-            self.time.to_le_bytes(),
-            [0; 4],
-            [0; 4],
-            [0; 4],
-            [0; 4],
-            [0; 4],
-        ]
-        .concat()
-    }
-}
-
-struct State<'a> {
-    time: f32,
-    paused: bool,
+pub struct Renderer<'a> {
+    pub paused: bool,
+    pub pipeline_selector: PipelineSelector,
+    pub draw_wireframes: bool,
     mouse_pos_smoothed: [f32; 2],
 
     instance: wgpu::Instance,
@@ -57,8 +22,8 @@ struct State<'a> {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    size: (i32, i32),
-    window: &'a mut Window,
+    pub size: (i32, i32),
+    pub window: &'a mut glfw::Window,
     lava_lamp_pipeline: wgpu::RenderPipeline,
     loading_animation_pipeline: wgpu::RenderPipeline,
     map_pipeline: wgpu::RenderPipeline,
@@ -66,26 +31,17 @@ struct State<'a> {
     full_screen_mesh: Mesh,
     fun_quad_meshes: HashMap<usize, Mesh>,
     cube_mesh: Mesh,
+    ground_plane_mesh: Mesh,
     fun_quad_material: SpriteMaterial,
+    depth_texture: Texture,
 
     ubo: Option<UBO>,
 
     common_shader_info: SingleUBO,
-
-    pipeline_selector: PipelineSelector,
-    draw_wireframes: bool,
 }
 
-#[derive(PartialEq, Eq, Sequence)]
-enum PipelineSelector {
-    Lava,
-    Loading,
-    Map,
-    World3d,
-}
-
-impl<'a> State<'a> {
-    async fn new(window: &'a mut Window) -> Self {
+impl<'a> Renderer<'a> {
+    pub async fn new(window: &'a mut glfw::Window) -> Self {
         let size = window.get_framebuffer_size();
 
         let instance_descriptor = wgpu::InstanceDescriptor {
@@ -137,27 +93,29 @@ impl<'a> State<'a> {
         };
         surface.configure(&device, &config);
 
-        let full_screen_quad_mesh = mesh::make_quad(&device, 1.0);
+        let full_screen_quad_mesh = make_quad(&device, 1.0);
 
         let mut fun_quad_meshes = HashMap::new();
 
-        let cube_mesh = mesh::make_cube(&device, Vec3::new(1.0, 0.6, 0.6));
+        let ground_plane_mesh = make_rough_ground_plane(&device);
+
+        let cube_mesh = make_cube(&device, glm::Vec4::new(1.0, 0.6, 0.6, 0.4));
 
         for n_sides in 3..=70 {
-            let mesh = mesh::make_n_gon(&device, n_sides);
+            let mesh = make_n_gon(&device, n_sides);
             fun_quad_meshes.insert(n_sides, mesh);
         }
 
         let material_bind_group_layout;
         {
-            let mut builder = bind_group_layout::Builder::new(&device);
+            let mut builder = BindGroupLayoutBuilder::new(&device);
             builder.add_material();
             material_bind_group_layout = builder.build("SpriteMaterial Bind Group Layout");
         }
 
         let ubo_bind_group_layout;
         {
-            let mut builder = bind_group_layout::Builder::new(&device);
+            let mut builder = BindGroupLayoutBuilder::new(&device);
             builder.add_ubo();
             ubo_bind_group_layout = builder.build("UBO Bind Group Layout");
         }
@@ -173,6 +131,8 @@ impl<'a> State<'a> {
             contents: &shader_params.to_bytes(),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
+
+        let depth_texture = Texture::create_depth_texture(&device, &config, "depth_texture");
 
         let time_etc_data_bind_group =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -190,27 +150,27 @@ impl<'a> State<'a> {
             });
 
         let lava_lamp_pipeline = {
-            let mut builder = pipeline::Builder::new(&device);
+            let mut builder = PipelineBuilder::new(&device);
             let shader = Shader::from_path("src/shaders/cells.wgsl");
             builder.add_bind_group_layout(&time_etc_data_bind_group);
             builder.add_bind_group_layout(&ubo_bind_group_layout);
-            builder.build_pipeline("Lava Lamp Pipeline", &shader, config.format, true)
+            builder.build_pipeline("Lava Lamp Pipeline", &shader, config.format, true, true)
         };
 
         let loading_animation_pipeline = {
-            let mut builder = pipeline::Builder::new(&device);
+            let mut builder = PipelineBuilder::new(&device);
             let shader = Shader::from_path("src/shaders/loading.wgsl");
             builder.add_bind_group_layout(&time_etc_data_bind_group);
             builder.add_bind_group_layout(&ubo_bind_group_layout);
-            builder.build_pipeline("Lava Lamp Pipeline", &shader, config.format, true)
+            builder.build_pipeline("Lava Lamp Pipeline", &shader, config.format, true, true)
         };
 
         let map_pipeline = {
-            let mut builder = pipeline::Builder::new(&device);
+            let mut builder = PipelineBuilder::new(&device);
             let shader = Shader::from_path("src/shaders/map.wgsl");
             builder.add_bind_group_layout(&time_etc_data_bind_group);
             builder.add_bind_group_layout(&ubo_bind_group_layout);
-            builder.build_pipeline("Map Pipeline", &shader, config.format, true)
+            builder.build_pipeline("Map Pipeline", &shader, config.format, true, true)
         };
 
         let standard_3d_pipeline = Standard3DPipeline::new(
@@ -230,14 +190,13 @@ impl<'a> State<'a> {
         );
 
         let uniform_bind_group = {
-            let mut builder = Builder::new(&device);
+            let mut builder = BindGroupBuilder::new(&device);
             builder.set_layout(&time_etc_data_bind_group);
             builder.add_buffer(&uniform_buffer, 0);
             builder.build("uniform buffer")
         };
 
         Self {
-            time: 0.0,
             paused: false,
             mouse_pos_smoothed: [0.0, 0.0],
             instance,
@@ -253,6 +212,7 @@ impl<'a> State<'a> {
             standard_3d_pipeline,
             full_screen_mesh: full_screen_quad_mesh,
             cube_mesh,
+            ground_plane_mesh,
             fun_quad_meshes,
             fun_quad_material,
             ubo: None,
@@ -261,23 +221,24 @@ impl<'a> State<'a> {
                 bind_group: uniform_bind_group,
             },
 
-            pipeline_selector: PipelineSelector::Map,
+            pipeline_selector: PipelineSelector::World3d,
             draw_wireframes: false,
+            depth_texture,
         }
     }
 
-    fn resize(&mut self, new_size: (i32, i32)) {
+    pub fn resize(&mut self, new_size: (i32, i32)) {
         if new_size.0 > 0 && new_size.1 > 0 {
             self.size = new_size;
             self.config.width = new_size.0 as u32;
             self.config.height = new_size.1 as u32;
             self.surface.configure(&self.device, &self.config);
-            self.standard_3d_pipeline
-                .redraw_depth_texture(&self.device, &self.config);
+            self.depth_texture =
+                Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
         }
     }
 
-    fn update_surface(&mut self) {
+    pub fn update_surface(&mut self) {
         self.surface = self
             .instance
             .create_surface(self.window.render_context())
@@ -286,7 +247,7 @@ impl<'a> State<'a> {
 
     pub fn build_ubos_for_objects(&mut self, object_count: usize) {
         let ubo_bind_group_layout = {
-            let mut builder = bind_group_layout::Builder::new(&self.device);
+            let mut builder = BindGroupLayoutBuilder::new(&self.device);
             builder.add_ubo();
             builder.build("UBO Bind Group Layout")
         };
@@ -365,6 +326,7 @@ impl<'a> State<'a> {
             let mesh = match quads[i].mesh_type {
                 MeshType::Polygon(n_sides) => self.fun_quad_meshes.get(&n_sides).unwrap(),
                 MeshType::Cube => &self.cube_mesh,
+                MeshType::GroundPlane => &self.ground_plane_mesh,
             };
 
             mesh.set_as_active(rp);
@@ -374,36 +336,14 @@ impl<'a> State<'a> {
         }
     }
 
-    fn update_projection(&mut self, camera: &mut Camera) {
-        let z = (self.time / 9.0).sin() * 20.0;
-        let y = (self.time / 6.0).sin() * 9.0 + 10.0;
-        let x = (self.time / 9.0).cos() * 20.0;
-
-        let tz = (self.time / 4.0).sin() * 2.0;
-        let tx = (self.time / 4.0).cos() * 2.0;
-
-        let target = Vec3::new(tx, 0.0, tz);
-        let eye = Vec3::new(x, y, z);
-
-        camera.target = target;
-        camera.eye = eye;
-
-        let view_proj = camera.to_projection_matrix(self.window);
-
+    fn update_projection(&mut self, world: &World) {
+        let view_proj = world.camera.to_projection_matrix(self.window);
         self.standard_3d_pipeline
             .upload_camera_matrix(&view_proj, &self.queue);
     }
 
-    fn render(&mut self, world: &mut World) -> Result<(), wgpu::SurfaceError> {
-        let (w, h) = self.window.get_size();
-
-        if w == 0 || h == 0 {
-            return Ok(());
-        }
-
-        self.device.poll(wgpu::Maintain::wait());
-
-        self.update_projection(&mut world.camera);
+    pub fn update(&mut self, world: &mut World) {
+        self.update_projection(world);
 
         let mouse_pos = self.window.get_cursor_pos();
 
@@ -412,22 +352,28 @@ impl<'a> State<'a> {
 
         let shader_params = ShaderParams {
             mouse: (self.mouse_pos_smoothed[0], self.mouse_pos_smoothed[1]),
-            time: self.time,
+            time: world.time,
             resolution: (
                 self.window.get_size().0 as f32,
                 self.window.get_size().1 as f32,
             ),
         };
 
-        if !self.paused {
-            self.time += 0.005;
-        }
-
         self.queue.write_buffer(
             &self.common_shader_info.buffer,
             0,
             &shader_params.to_bytes(),
         );
+    }
+
+    pub fn render(&mut self, world: &mut World) -> Result<(), wgpu::SurfaceError> {
+        let (w, h) = self.window.get_size();
+
+        if w == 0 || h == 0 {
+            return Ok(());
+        }
+
+        self.device.poll(wgpu::Maintain::wait());
 
         {
             let event = self.queue.submit([]);
@@ -436,13 +382,24 @@ impl<'a> State<'a> {
         }
 
         let depth_stencil_attachment = Some(wgpu::RenderPassDepthStencilAttachment {
-            view: &self.standard_3d_pipeline.depth_texture.view,
+            view: self.depth_texture.view(),
             depth_ops: Some(wgpu::Operations {
                 load: wgpu::LoadOp::Clear(1.0),
                 store: wgpu::StoreOp::Store,
             }),
             stencil_ops: None,
         });
+
+        let clear_color = if self.draw_wireframes {
+            wgpu::Color::default()
+        } else {
+            wgpu::Color {
+                r: 0.4,
+                g: 0.4,
+                b: 0.9,
+                a: 1.0,
+            }
+        };
 
         let drawable = self.surface.get_current_texture()?;
         let render_pass_descriptor = wgpu::RenderPassDescriptor {
@@ -453,12 +410,7 @@ impl<'a> State<'a> {
                     .create_view(&wgpu::TextureViewDescriptor::default()),
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.2,
-                        g: 0.2,
-                        b: 0.2,
-                        a: 1.0,
-                    }),
+                    load: wgpu::LoadOp::Clear(clear_color),
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -499,130 +451,4 @@ impl<'a> State<'a> {
 
         Ok(())
     }
-}
-
-#[derive(Parser)]
-struct Args {
-    // shader_path: String,
-}
-
-async fn run() {
-    let args = Args::parse();
-
-    let mut glfw = glfw::init(fail_on_errors!()).unwrap();
-    glfw.window_hint(WindowHint::ClientApi(ClientApiHint::NoApi));
-    let (mut window, events) = glfw
-        .create_window(800, 600, "It's WGPU time.", glfw::WindowMode::Windowed)
-        .unwrap();
-
-    let mut state = State::new(&mut window).await;
-
-    state.window.set_framebuffer_size_polling(true);
-    state.window.set_key_polling(true);
-    state.window.set_mouse_button_polling(true);
-    state.window.set_pos_polling(true);
-
-    // state.window.set_cursor_mode(glfw::CursorMode::Hidden);
-
-    // Build world
-    let mut world = World::new();
-    world.quads.push(Object {
-        position: Vec3::new(0.0, 6.0, -9.0),
-        angle: 0.0,
-        vel: 0.0,
-        mesh_type: MeshType::Polygon(9),
-        should_animate: false,
-    });
-    world.quads.push(Object {
-        position: Vec3::new(0.0, 4.0, -5.6),
-        angle: 0.0,
-        vel: 0.0,
-        mesh_type: MeshType::Polygon(3),
-        should_animate: false,
-    });
-    world.quads.push(Object {
-        position: Vec3::new(0.2, 5.3, -4.8),
-        angle: 0.4,
-        vel: 0.0,
-        mesh_type: MeshType::Polygon(6),
-        should_animate: false,
-    });
-
-    for x in (-10..10).step_by(2) {
-        for z in (-15..15).step_by(3) {
-            world.quads.push(Object {
-                position: Vec3::new(x as f32, 0.0, z as f32),
-                angle: 0.0,
-                vel: (x * z) as f32 / 100000.0,
-                mesh_type: MeshType::Cube,
-                should_animate: true,
-            });
-        }
-    }
-
-    for y in (3..20).step_by(2) {
-        world.quads.push(Object {
-            position: Vec3::new(0.0, y as f32, 0.0),
-            angle: 0.0,
-            vel: 0.0,
-            mesh_type: MeshType::Cube,
-            should_animate: false,
-        });
-    }
-
-    state.build_ubos_for_objects(world.quads.len());
-
-    while !state.window.should_close() {
-        glfw.poll_events();
-
-        world.update(16.67 / 1000.0, state.window);
-
-        for (_, event) in glfw::flush_messages(&events) {
-            match event {
-                //Hit escape
-                glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
-                    state.window.set_should_close(true)
-                }
-                glfw::WindowEvent::Key(Key::Space, _, Action::Press, _) => {
-                    state.paused ^= true;
-                }
-                glfw::WindowEvent::Key(Key::Z, _, Action::Press, _) => {
-                    state.draw_wireframes ^= true;
-                }
-                glfw::WindowEvent::Key(Key::Right, _, Action::Press, _) => {
-                    state.pipeline_selector = enum_iterator::next_cycle(&state.pipeline_selector);
-                }
-                glfw::WindowEvent::Key(Key::Left, _, Action::Press, _) => {
-                    state.pipeline_selector =
-                        enum_iterator::previous_cycle(&state.pipeline_selector);
-                }
-
-                //Window was moved
-                glfw::WindowEvent::Pos(..) => {
-                    state.update_surface();
-                    state.resize(state.size);
-                }
-
-                //Window was resized
-                glfw::WindowEvent::FramebufferSize(width, height) => {
-                    state.update_surface();
-                    state.resize((width, height));
-                }
-                _ => {}
-            }
-        }
-
-        match state.render(&mut world) {
-            Ok(_) => {}
-            Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                state.update_surface();
-                state.resize(state.size);
-            }
-            Err(e) => eprintln!("{:?}", e),
-        }
-    }
-}
-
-fn main() {
-    pollster::block_on(run());
 }

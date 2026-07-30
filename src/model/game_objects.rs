@@ -3,6 +3,7 @@ use glm::*;
 pub enum MeshType {
     Polygon(usize),
     Cube,
+    GroundPlane,
 }
 
 pub struct Object {
@@ -91,7 +92,7 @@ impl World {
         }
     }
 
-    pub fn update(&mut self, dt: f32, window: &mut glfw::Window) {
+    pub fn update(&mut self, dt: f32) {
         self.time += dt;
         for quad in &mut self.quads {
             quad.angle = quad.angle + quad.vel * dt;
@@ -104,5 +105,15 @@ impl World {
                 quad.position.y = a.sin() + 1.0;
             }
         }
+
+        let z = (self.time / 15.0).sin() * 20.0;
+        let y = (self.time / 11.0).sin() * 4.0 + 10.0;
+        let x = (self.time / 15.0).cos() * 20.0;
+
+        let target = Vec3::new(0.0, 0.0, 0.0);
+        let eye = Vec3::new(x, y, z);
+
+        self.camera.target = target;
+        self.camera.eye = eye;
     }
 }

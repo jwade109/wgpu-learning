@@ -1,6 +1,6 @@
 use crate::renderer_backend::{mesh::Vertex, Shader, Texture};
 
-pub struct Builder<'a> {
+pub struct PipelineBuilder<'a> {
     vertex_buffer_layouts: Vec<wgpu::VertexBufferLayout<'static>>,
     bind_group_layouts: Vec<&'a wgpu::BindGroupLayout>,
     device: &'a wgpu::Device,
@@ -15,9 +15,9 @@ fn make_shader_module(device: &wgpu::Device, shader: &Shader, label: &str) -> wg
     device.create_shader_module(desc)
 }
 
-impl<'a> Builder<'a> {
+impl<'a> PipelineBuilder<'a> {
     pub fn new(device: &'a wgpu::Device) -> Self {
-        Builder {
+        Self {
             vertex_buffer_layouts: Vec::new(),
             bind_group_layouts: Vec::new(),
             device: device,
@@ -39,6 +39,7 @@ impl<'a> Builder<'a> {
         shader: &Shader,
         pixel_format: wgpu::TextureFormat,
         has_depth_stencil: bool,
+        cull_backface: bool,
     ) -> wgpu::RenderPipeline {
         self.vertex_buffer_layouts.push(Vertex::get_layout());
 
@@ -79,7 +80,7 @@ impl<'a> Builder<'a> {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
+                cull_mode: cull_backface.then(|| wgpu::Face::Back),
                 polygon_mode: if self.draw_wireframes {
                     wgpu::PolygonMode::Line
                 } else {

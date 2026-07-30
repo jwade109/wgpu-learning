@@ -1,12 +1,12 @@
-pub struct Builder<'a> {
+pub struct BindGroupBuilder<'a> {
     entries: Vec<wgpu::BindGroupEntry<'a>>,
     layout: Option<&'a wgpu::BindGroupLayout>,
     device: &'a wgpu::Device,
 }
 
-impl<'a> Builder<'a> {
+impl<'a> BindGroupBuilder<'a> {
     pub fn new(device: &'a wgpu::Device) -> Self {
-        Builder {
+        Self {
             entries: Vec::new(),
             layout: None,
             device: device,

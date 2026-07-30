@@ -10,12 +10,12 @@ struct ShaderParams {
 
 struct Vertex {
     @location(0) position: vec3<f32>,
-    @location(1) color: vec3<f32>,
+    @location(1) color: vec4<f32>,
 };
 
 struct VertexShaderOutput {
     @builtin(position) position: vec4<f32>,
-    @location(0) color: vec3<f32>,
+    @location(0) color: vec4<f32>,
 };
 
 @vertex
@@ -145,5 +145,5 @@ fn get_lava_lamp_color(in: VertexShaderOutput) -> vec4<f32> {
 
 @fragment
 fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
-    return mix(vec4<f32>(in.color, 1.0), get_lava_lamp_color(in), 1.0);
+    return mix(in.color, get_lava_lamp_color(in), 1.0);
 }

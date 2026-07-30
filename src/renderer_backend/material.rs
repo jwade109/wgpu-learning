@@ -1,4 +1,4 @@
-use super::bind_group;
+use crate::renderer_backend::bind_group::BindGroupBuilder;
 
 pub struct SpriteMaterial {
     bind_group: wgpu::BindGroup,
@@ -69,7 +69,7 @@ impl SpriteMaterial {
         let sampler = device.create_sampler(&sampler_descriptor);
 
         // Make a bind group for everything
-        let mut builder = bind_group::Builder::new(device);
+        let mut builder = BindGroupBuilder::new(device);
         builder.set_layout(layout);
         builder.add_material(&view, &sampler);
         let bind_group = builder.build(label);

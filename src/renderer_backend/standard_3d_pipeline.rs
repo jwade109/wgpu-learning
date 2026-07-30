@@ -1,13 +1,6 @@
-use wgpu::{
-    util::DeviceExt, BindGroupLayout, Device, Queue, RenderPass, RenderPipeline,
-    SurfaceConfiguration,
-};
-
-use crate::renderer_backend::{
-    bind_group_layout,
-    ubo::{SingleUBO, UBO},
-    Shader, Texture,
-};
+use crate::renderer_backend::*;
+use wgpu::util::DeviceExt;
+use wgpu::*;
 
 pub struct Standard3DPipeline {
     standard: RenderPipeline,
@@ -15,7 +8,6 @@ pub struct Standard3DPipeline {
     draw_wireframes: bool,
     camera_ubo: UBO,
     lighting_ubo: SingleUBO,
-    pub depth_texture: Texture,
 }
 
 impl Standard3DPipeline {
@@ -26,38 +18,37 @@ impl Standard3DPipeline {
         time_etc_data_bind_group: &BindGroupLayout,
         config: &SurfaceConfiguration,
     ) -> Self {
-        let depth_texture = Texture::create_depth_texture(&device, config, "depth_texture");
-
         let camera_projection_bind_group_layout = {
-            let mut builder = bind_group_layout::Builder::new(&device);
+            let mut builder = BindGroupLayoutBuilder::new(&device);
             builder.add_ubo();
             builder.build("Camera Projection UBO")
         };
 
         let lighting_bind_group_layout = {
-            let mut builder = bind_group_layout::Builder::new(&device);
+            let mut builder = BindGroupLayoutBuilder::new(&device);
             builder.add_ubo();
             builder.build("Lighting UBO")
         };
 
-        let mut builder = super::pipeline::Builder::new(&device);
+        let mut builder = PipelineBuilder::new(&device);
         let shader = Shader::from_path("src/shaders/texture.wgsl");
         builder.add_bind_group_layout(ubo_bind_group_layout);
         builder.add_bind_group_layout(material_bind_group_layout);
         builder.add_bind_group_layout(time_etc_data_bind_group);
         builder.add_bind_group_layout(&camera_projection_bind_group_layout);
         builder.add_bind_group_layout(&lighting_bind_group_layout);
-        let standard = builder.build_pipeline("Standard 3D Pipeline", &shader, config.format, true);
+        let standard =
+            builder.build_pipeline("Standard 3D Pipeline", &shader, config.format, true, true);
 
         let wireframe = {
-            let mut builder = super::pipeline::Builder::new(&device);
+            let mut builder = PipelineBuilder::new(&device);
             builder.add_bind_group_layout(&ubo_bind_group_layout);
             builder.add_bind_group_layout(&material_bind_group_layout);
             builder.add_bind_group_layout(&time_etc_data_bind_group);
             builder.add_bind_group_layout(&camera_projection_bind_group_layout);
             builder.add_bind_group_layout(&lighting_bind_group_layout);
             builder.wireframes();
-            builder.build_pipeline("Texture Pipeline", &shader, config.format, true)
+            builder.build_pipeline("Texture Pipeline", &shader, config.format, true, false)
         };
 
         let camera_ubo = UBO::new(&device, 1, camera_projection_bind_group_layout);
@@ -71,7 +62,7 @@ impl Standard3DPipeline {
         });
 
         let lighting_bind_group = {
-            let mut builder = super::bind_group::Builder::new(&device);
+            let mut builder = BindGroupBuilder::new(&device);
             builder.set_layout(&lighting_bind_group_layout);
             builder.add_buffer(&buffer, 0);
             builder.build("uniform buffer")
@@ -86,7 +77,6 @@ impl Standard3DPipeline {
                 buffer,
                 bind_group: lighting_bind_group,
             },
-            depth_texture,
         }
     }
 
@@ -100,10 +90,6 @@ impl Standard3DPipeline {
         } else {
             &self.standard
         }
-    }
-
-    pub fn redraw_depth_texture(&mut self, device: &Device, config: &SurfaceConfiguration) {
-        self.depth_texture = Texture::create_depth_texture(device, config, "depth_texture");
     }
 
     pub fn set_bindings(&self, rp: &mut RenderPass) {

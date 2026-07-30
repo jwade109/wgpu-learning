@@ -1,11 +1,17 @@
 pub struct Texture {
+    #[allow(unused)]
     texture: wgpu::Texture,
-    pub view: wgpu::TextureView,
+    view: wgpu::TextureView,
+    #[allow(unused)]
     sampler: wgpu::Sampler,
 }
 
 impl Texture {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float; // 1.
+
+    pub fn view(&self) -> &wgpu::TextureView {
+        &self.view
+    }
 
     pub fn create_depth_texture(
         device: &wgpu::Device,

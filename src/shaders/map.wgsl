@@ -77,12 +77,12 @@ fn is_in_shadow(pz: vec3<f32>, sun: vec3<f32>) -> bool {
     while (length(sample - sun) > 5.0)
     {
         i += 1;
-        if (i > 50)
+        if (i > 20)
         {
             break;
         }
 
-        sample += u;
+        sample += u * 5.0;
         let z_sample = height_func(sample.xy);
         if (z_sample > sample.z)
         {

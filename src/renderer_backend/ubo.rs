@@ -1,4 +1,4 @@
-use super::bind_group;
+use crate::renderer_backend::bind_group::BindGroupBuilder;
 
 // From: https://stackoverflow.com/questions/28127165/how-to-convert-struct-to-u8
 fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
@@ -36,7 +36,7 @@ impl UBO {
         // build bind groups
         let mut bind_groups: Vec<wgpu::BindGroup> = Vec::new();
         for i in 0..object_count {
-            let mut builder = bind_group::Builder::new(device);
+            let mut builder = BindGroupBuilder::new(device);
             builder.set_layout(&layout);
             builder.add_buffer(&buffer, i as u64 * allignment);
             bind_groups.push(builder.build("Matrix"));

@@ -1,1 +1,3 @@
-pub mod game_objects;
+mod game_objects;
+
+pub use game_objects::*;

@@ -1,6 +1,7 @@
 #[derive(Default)]
 pub struct Shader {
-    pub imports: Vec<String>,
+    #[allow(unused)]
+    imports: Vec<String>,
     pub contents: String,
     pub vertex_entry: String,
     pub fragment_entry: String,
