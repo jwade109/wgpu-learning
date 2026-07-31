@@ -261,3 +261,7 @@ pub fn mat4_diagonal(a: f32, b: f32, c: f32, d: f32) -> glm::Mat4 {
     let c3 = glm::Vec4::new(0.0, 0.0, 0.0, d);
     glm::Matrix4::new(c0, c1, c2, c3)
 }
+
+pub fn mat4_lerp(a: &Mat4, b: &Mat4, t: f32) -> Mat4 {
+    *a + (*b - *a) * t
+}

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use glfw::{fail_on_errors, Action, ClientApiHint, Key, WindowHint};
 use glm::*;
 use wgpu_learning::{model::*, renderer_backend::*};
@@ -73,6 +75,29 @@ fn make_world() -> World {
     world
 }
 
+fn make_camera_controls(keys: &HashSet<Key>) -> CameraControls {
+    let mut ctrls = CameraControls::default();
+    if keys.contains(&Key::Space) {
+        ctrls.y_axis = CamDir::Positive
+    }
+    if keys.contains(&Key::LeftShift) {
+        ctrls.y_axis = CamDir::Negative
+    }
+    if keys.contains(&Key::A) {
+        ctrls.x_axis = CamDir::Negative;
+    }
+    if keys.contains(&Key::D) {
+        ctrls.x_axis = CamDir::Positive;
+    }
+    if keys.contains(&Key::W) {
+        ctrls.z_axis = CamDir::Positive;
+    }
+    if keys.contains(&Key::S) {
+        ctrls.z_axis = CamDir::Negative;
+    }
+    ctrls
+}
+
 async fn run() {
     let mut glfw = glfw::init(fail_on_errors!()).unwrap();
     glfw.window_hint(WindowHint::ClientApi(ClientApiHint::NoApi));
@@ -87,6 +112,8 @@ async fn run() {
     renderer.window.set_mouse_button_polling(true);
     renderer.window.set_pos_polling(true);
 
+    let mut keys_pressed = HashSet::new();
+
     // renderer.window.set_cursor_mode(glfw::CursorMode::Hidden);
 
     let mut world = make_world();
@@ -96,9 +123,21 @@ async fn run() {
 
         renderer.update(&mut world);
 
-        world.update(16.67 / 1000.0);
+        let ctrls = make_camera_controls(&keys_pressed);
+
+        world.update(16.67 / 1000.0, &ctrls);
 
         for (_, event) in glfw::flush_messages(&events) {
+            match event {
+                glfw::WindowEvent::Key(key, _, Action::Press, _) => {
+                    keys_pressed.insert(key);
+                }
+                glfw::WindowEvent::Key(key, _, Action::Release, _) => {
+                    keys_pressed.remove(&key);
+                }
+                _ => (),
+            }
+
             match event {
                 //Hit escape
                 glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {

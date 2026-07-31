@@ -146,5 +146,7 @@ fn get_lava_lamp_color(in: VertexShaderOutput) -> vec4<f32> {
 
 @fragment
 fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
-    return mix(in.color, get_lava_lamp_color(in), 1.0);
+    var c = mix(in.color, get_lava_lamp_color(in), 1.0);
+    c.w = 0.6;
+    return c;
 }

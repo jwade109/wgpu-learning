@@ -15,19 +15,21 @@ pub struct SingleUBO {
 pub struct UBO {
     buffer: wgpu::Buffer,
     bind_groups: Vec<wgpu::BindGroup>,
-    allignment: u64,
+    alignment: u64,
 }
 
 impl UBO {
     pub fn new(device: &wgpu::Device, object_count: usize, layout: wgpu::BindGroupLayout) -> Self {
-        let allignment = glm::max(
+        let alignment = glm::max(
             device.limits().min_storage_buffer_offset_alignment as u32,
             std::mem::size_of::<glm::Mat4>() as u32,
         ) as u64;
 
+        println!("Alignment is {alignment}");
+
         let buffer_descriptor = wgpu::BufferDescriptor {
             label: Some("UBO"),
-            size: object_count as u64 * allignment,
+            size: object_count as u64 * alignment,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         };
@@ -38,14 +40,14 @@ impl UBO {
         for i in 0..object_count {
             let mut builder = BindGroupBuilder::new(device);
             builder.set_layout(&layout);
-            builder.add_buffer(&buffer, i as u64 * allignment);
+            builder.add_buffer(&buffer, i as u64 * alignment);
             bind_groups.push(builder.build("Matrix"));
         }
 
         Self {
             buffer,
             bind_groups,
-            allignment,
+            alignment,
         }
     }
 
@@ -54,7 +56,10 @@ impl UBO {
     }
 
     pub fn upload(&mut self, i: u64, matrix: &glm::Mat4, queue: &wgpu::Queue) {
-        let offset = i * self.allignment;
+        if i as usize >= self.bind_groups.len() {
+            panic!("Dude");
+        }
+        let offset = i * self.alignment;
         let data: &[u8] = any_as_u8_slice(matrix);
         queue.write_buffer(&self.buffer, offset, data);
     }

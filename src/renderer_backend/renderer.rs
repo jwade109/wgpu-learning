@@ -395,16 +395,23 @@ impl<'a> Renderer<'a> {
                     let (sx, sy) = self.window.get_size();
                     let aspect = sx as f32 / sy as f32;
 
-                    let pixels = 450.0;
-                    let size = pixels / sx as f32;
+                    let pixels = 300;
+                    let padding = 70;
+                    let size = (pixels - padding) as f32 / sx as f32;
 
                     let mut i = 0;
 
-                    for x in [-1000, -500, 0, 500, 1000] {
-                        for y in [-500, 0, 500] {
+                    let camera_proj = world.camera.to_projection_matrix(self.window);
+                    let t = (world.time / 3.0).sin() * 0.5 + 0.5;
+                    let eye = mat4_identity();
+                    let proj = mat4_lerp(&camera_proj, &eye, t);
+
+                    'outer: for x in (-1000..=1000).step_by(pixels) {
+                        for y in (-500..=500).step_by(pixels) {
                             let xoff = x as f32 / sx as f32;
                             let yoff = y as f32 / sy as f32;
-                            let tf = translation_matrix(Vec3::new(xoff, yoff, 0.0))
+                            let tf = proj
+                                * translation_matrix(Vec3::new(xoff, yoff, 0.0))
                                 * mat4_diagonal(size / aspect, size, 1.0, 1.0);
                             self.lava_lamp_pipeline.draw(
                                 &mut renderpass,
@@ -416,6 +423,9 @@ impl<'a> Renderer<'a> {
                             );
 
                             i += 1;
+                            if i >= 250 {
+                                break 'outer;
+                            }
                         }
                     }
                 }
