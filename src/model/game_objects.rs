@@ -1,6 +1,8 @@
 use glm::*;
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub enum MeshType {
+    Quad,
     Polygon(usize),
     Cube,
     GroundPlane,

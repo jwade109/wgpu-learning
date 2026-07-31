@@ -24,14 +24,13 @@ pub struct Renderer<'a> {
     config: wgpu::SurfaceConfiguration,
     pub size: (i32, i32),
     pub window: &'a mut glfw::Window,
-    lava_lamp_pipeline: wgpu::RenderPipeline,
+    lava_lamp_pipeline: LavaLampPipeline,
     loading_animation_pipeline: wgpu::RenderPipeline,
     map_pipeline: wgpu::RenderPipeline,
     standard_3d_pipeline: Standard3DPipeline,
-    full_screen_mesh: Mesh,
-    fun_quad_meshes: HashMap<usize, Mesh>,
-    cube_mesh: Mesh,
-    ground_plane_mesh: Mesh,
+
+    meshes: HashMap<MeshType, Mesh>,
+
     fun_quad_material: SpriteMaterial,
     depth_texture: Texture,
 
@@ -93,17 +92,18 @@ impl<'a> Renderer<'a> {
         };
         surface.configure(&device, &config);
 
-        let full_screen_quad_mesh = make_quad(&device, 1.0);
+        let mut meshes = HashMap::new();
 
-        let mut fun_quad_meshes = HashMap::new();
-
-        let ground_plane_mesh = make_rough_ground_plane(&device);
-
-        let cube_mesh = make_cube(&device, glm::Vec4::new(1.0, 0.6, 0.6, 0.4));
+        meshes.insert(MeshType::Quad, make_quad(&device, 1.0));
+        meshes.insert(
+            MeshType::Cube,
+            make_cube(&device, glm::Vec4::new(1.0, 0.6, 0.6, 0.4)),
+        );
+        meshes.insert(MeshType::GroundPlane, make_rough_ground_plane(&device));
 
         for n_sides in 3..=70 {
             let mesh = make_n_gon(&device, n_sides);
-            fun_quad_meshes.insert(n_sides, mesh);
+            meshes.insert(MeshType::Polygon(n_sides), mesh);
         }
 
         let material_bind_group_layout;
@@ -149,13 +149,7 @@ impl<'a> Renderer<'a> {
                 label: Some("uniform_data_bind_group"),
             });
 
-        let lava_lamp_pipeline = {
-            let mut builder = PipelineBuilder::new(&device);
-            let shader = Shader::from_path("src/shaders/cells.wgsl");
-            builder.add_bind_group_layout(&time_etc_data_bind_group);
-            builder.add_bind_group_layout(&ubo_bind_group_layout);
-            builder.build_pipeline("Lava Lamp Pipeline", &shader, config.format, true, true)
-        };
+        let lava_lamp_pipeline = LavaLampPipeline::new(&device, &time_etc_data_bind_group, &config);
 
         let loading_animation_pipeline = {
             let mut builder = PipelineBuilder::new(&device);
@@ -169,7 +163,6 @@ impl<'a> Renderer<'a> {
             let mut builder = PipelineBuilder::new(&device);
             let shader = Shader::from_path("src/shaders/map.wgsl");
             builder.add_bind_group_layout(&time_etc_data_bind_group);
-            builder.add_bind_group_layout(&ubo_bind_group_layout);
             builder.build_pipeline("Map Pipeline", &shader, config.format, true, true)
         };
 
@@ -210,10 +203,7 @@ impl<'a> Renderer<'a> {
             loading_animation_pipeline,
             map_pipeline,
             standard_3d_pipeline,
-            full_screen_mesh: full_screen_quad_mesh,
-            cube_mesh,
-            ground_plane_mesh,
-            fun_quad_meshes,
+            meshes,
             fun_quad_material,
             ubo: None,
             common_shader_info: SingleUBO {
@@ -254,49 +244,31 @@ impl<'a> Renderer<'a> {
         self.ubo = Some(UBO::new(&self.device, object_count, ubo_bind_group_layout));
     }
 
-    fn draw_lava_lamp(&self, rp: &mut wgpu::RenderPass) {
-        rp.set_pipeline(&self.lava_lamp_pipeline);
-        rp.set_bind_group(0, &self.common_shader_info.bind_group, &[]);
-        self.full_screen_mesh.set_as_active(rp);
-        let bg = self
-            .ubo
-            .as_ref()
-            .map(|e| e.bind_group(0))
-            .flatten()
-            .unwrap();
-        rp.set_bind_group(1, bg, &[]);
-        rp.draw_indexed(0..self.full_screen_mesh.index_count(), 0, 0..1);
-    }
-
     fn draw_loading(&self, rp: &mut wgpu::RenderPass) {
         rp.set_pipeline(&self.loading_animation_pipeline);
-        rp.set_bind_group(0, &self.common_shader_info.bind_group, &[]);
-        self.full_screen_mesh.set_as_active(rp);
+
         let bg = self
             .ubo
             .as_ref()
             .map(|e| e.bind_group(0))
             .flatten()
             .unwrap();
+
+        rp.set_bind_group(0, &self.common_shader_info.bind_group, &[]);
         rp.set_bind_group(1, bg, &[]);
-        rp.draw_indexed(0..self.full_screen_mesh.index_count(), 0, 0..1);
+
+        let mesh = self.meshes.get(&MeshType::Quad).unwrap();
+        draw_mesh(rp, mesh);
     }
 
     fn draw_map(&self, rp: &mut wgpu::RenderPass) {
         rp.set_pipeline(&self.map_pipeline);
         rp.set_bind_group(0, &self.common_shader_info.bind_group, &[]);
-        self.full_screen_mesh.set_as_active(rp);
-        let bg = self
-            .ubo
-            .as_ref()
-            .map(|e| e.bind_group(0))
-            .flatten()
-            .unwrap();
-        rp.set_bind_group(1, bg, &[]);
-        rp.draw_indexed(0..self.full_screen_mesh.index_count(), 0, 0..1);
+        let mesh = self.meshes.get(&MeshType::Quad).unwrap();
+        draw_mesh(rp, mesh);
     }
 
-    fn draw_texture(&mut self, rp: &mut wgpu::RenderPass, quads: &Vec<Object>) {
+    fn draw_texture(&mut self, rp: &mut wgpu::RenderPass, world: &World) {
         self.standard_3d_pipeline
             .set_draw_wireframes(self.draw_wireframes);
         rp.set_pipeline(self.standard_3d_pipeline.pipeline());
@@ -304,8 +276,8 @@ impl<'a> Renderer<'a> {
         self.standard_3d_pipeline.set_bindings(rp);
 
         {
-            for i in 0..quads.len() {
-                let matrix = quads[i].get_transform_matrix();
+            for i in 0..world.quads.len() {
+                let matrix = world.quads[i].get_transform_matrix();
                 self.ubo
                     .as_mut()
                     .unwrap()
@@ -315,7 +287,7 @@ impl<'a> Renderer<'a> {
 
         rp.set_bind_group(1, self.fun_quad_material.bind_group(), &[]);
 
-        for i in 0..quads.len() {
+        for i in 0..world.quads.len() {
             let bg = self
                 .ubo
                 .as_ref()
@@ -323,11 +295,7 @@ impl<'a> Renderer<'a> {
                 .flatten()
                 .unwrap();
 
-            let mesh = match quads[i].mesh_type {
-                MeshType::Polygon(n_sides) => self.fun_quad_meshes.get(&n_sides).unwrap(),
-                MeshType::Cube => &self.cube_mesh,
-                MeshType::GroundPlane => &self.ground_plane_mesh,
-            };
+            let mesh = self.meshes.get(&world.quads[i].mesh_type).unwrap();
 
             mesh.set_as_active(rp);
 
@@ -430,7 +398,9 @@ impl<'a> Renderer<'a> {
 
             match self.pipeline_selector {
                 PipelineSelector::Lava => {
-                    self.draw_lava_lamp(&mut renderpass);
+                    let mesh = self.meshes.get(&MeshType::Quad).unwrap();
+                    self.lava_lamp_pipeline
+                        .draw(&mut renderpass, mesh, &self.common_shader_info);
                 }
                 PipelineSelector::Loading => {
                     self.draw_loading(&mut renderpass);
@@ -439,7 +409,7 @@ impl<'a> Renderer<'a> {
                     self.draw_map(&mut renderpass);
                 }
                 PipelineSelector::World3d => {
-                    self.draw_texture(&mut renderpass, &mut world.quads);
+                    self.draw_texture(&mut renderpass, &world);
                 }
             }
         }

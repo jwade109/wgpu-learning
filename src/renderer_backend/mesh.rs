@@ -214,7 +214,7 @@ pub fn make_rough_ground_plane(device: &wgpu::Device) -> Mesh {
 
     let eval_height = |x: f32, z: f32| {
         // let dsq = x.powi(2) + z.powi(2);
-        // return (-1.0 / (0.01 * dsq)).clamp(-100.0, 1.0);
+        // return -100.0 / (0.1 * dsq + 1.0);
         let y1 = perlin.get([x as f64 / 5.0 + 0.5, 0.5, z as f64 / 5.0 + 0.5]);
         let y2 = perlin.get([x as f64 + 0.5, 0.5, z as f64 + 0.5]) * 0.4;
         let y3 = perlin.get([x as f64 / 18.0, 0.5, z as f64 / 18.0 + 0.5]) * 3.0;
@@ -243,4 +243,9 @@ pub fn make_rough_ground_plane(device: &wgpu::Device) -> Mesh {
     }
 
     mesh_from_vi(device, &vertices, &indices)
+}
+
+pub fn draw_mesh(rp: &mut wgpu::RenderPass, mesh: &Mesh) {
+    mesh.set_as_active(rp);
+    rp.draw_indexed(0..mesh.index_count(), 0, 0..1);
 }

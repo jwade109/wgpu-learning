@@ -34,7 +34,19 @@ fn make_world() -> World {
         should_animate: false,
     });
 
-    for i in 0..200 {
+    for i in 0..20 {
+        let a = i as f32 / 5.0;
+        let z = i as f32 * 1.0 - 10.0;
+        world.quads.push(Object {
+            position: Vec3::new(4.5, 3.0, z),
+            angle: a,
+            vel: 0.0,
+            mesh_type: MeshType::Quad,
+            should_animate: false,
+        });
+    }
+
+    for i in (0..200).step_by(14) {
         let a = i as f32 / 6.0;
         let r = 3.0 + i as f32 / 8.0;
         let x = a.cos() * r;
@@ -48,15 +60,15 @@ fn make_world() -> World {
         });
     }
 
-    for y in (3..20).step_by(2) {
-        world.quads.push(Object {
-            position: Vec3::new(0.0, y as f32, 0.0),
-            angle: 0.0,
-            vel: 0.0,
-            mesh_type: MeshType::Cube,
-            should_animate: false,
-        });
-    }
+    // for y in (3..20).step_by(2) {
+    //     world.quads.push(Object {
+    //         position: Vec3::new(0.0, y as f32, 0.0),
+    //         angle: 0.0,
+    //         vel: 0.0,
+    //         mesh_type: MeshType::Cube,
+    //         should_animate: false,
+    //     });
+    // }
 
     world
 }

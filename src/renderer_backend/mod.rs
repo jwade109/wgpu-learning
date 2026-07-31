@@ -1,5 +1,6 @@
 mod bind_group;
 mod bind_group_layout;
+mod lava_lamp_pipeline;
 mod material;
 mod mesh;
 mod pipeline;
@@ -12,6 +13,7 @@ mod ubo;
 
 pub use bind_group::*;
 pub use bind_group_layout::*;
+pub use lava_lamp_pipeline::*;
 pub use material::*;
 pub use mesh::*;
 pub use pipeline::*;
