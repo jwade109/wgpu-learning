@@ -10,21 +10,21 @@ fn make_world() -> World {
         position: Vec3::new(0.0, 6.0, -9.0),
         angle: 0.0,
         vel: 0.0,
-        mesh_type: MeshType::Polygon(9),
+        kind: EntityKind::Mesh(MeshType::Polygon(9)),
         should_animate: false,
     });
     world.quads.push(Object {
         position: Vec3::new(0.0, 4.0, -5.6),
         angle: 0.0,
         vel: 0.0,
-        mesh_type: MeshType::Polygon(3),
+        kind: EntityKind::Mesh(MeshType::Polygon(3)),
         should_animate: false,
     });
     world.quads.push(Object {
-        position: Vec3::new(0.2, 5.3, -4.8),
-        angle: 0.4,
-        vel: 0.0,
-        mesh_type: MeshType::Polygon(6),
+        position: Vec3::new(0.0, 5.0, 0.0),
+        angle: 0.0,
+        vel: 0.01,
+        kind: EntityKind::Mesh(MeshType::Tetradron),
         should_animate: false,
     });
 
@@ -32,7 +32,7 @@ fn make_world() -> World {
         position: Vec3::new(0.0, 0.0, 0.0),
         angle: 0.0,
         vel: 0.0,
-        mesh_type: MeshType::GroundPlane,
+        kind: EntityKind::Mesh(MeshType::GroundPlane),
         should_animate: false,
     });
 
@@ -43,7 +43,7 @@ fn make_world() -> World {
             position: Vec3::new(4.5, 3.0, z),
             angle: a,
             vel: 0.0,
-            mesh_type: MeshType::Quad,
+            kind: EntityKind::Mesh(MeshType::Quad),
             should_animate: false,
         });
     }
@@ -57,7 +57,24 @@ fn make_world() -> World {
             position: Vec3::new(x as f32, 0.0, z as f32),
             angle: i as f32 * 0.4,
             vel: 1.0,
-            mesh_type: MeshType::Cube,
+            kind: EntityKind::Mesh(MeshType::Cube),
+            should_animate: true,
+        });
+    }
+
+    for (x, y) in [
+        (-300, -200),
+        (-600, -200),
+        (-600, -400),
+        (-300, -400),
+        (-900, -200),
+        (-900, -400),
+    ] {
+        world.quads.push(Object {
+            position: Vec3::new(5.0, 5.0, 5.0),
+            angle: 0.0,
+            vel: 1.0,
+            kind: EntityKind::LavaLamp { x, y },
             should_animate: true,
         });
     }

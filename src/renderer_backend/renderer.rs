@@ -6,7 +6,6 @@ use wgpu::util::DeviceExt;
 
 #[derive(PartialEq, Eq, Sequence)]
 pub enum PipelineSelector {
-    Lava,
     Loading,
     Map,
     World3d,
@@ -101,6 +100,8 @@ impl<'a> Renderer<'a> {
             make_cube(&device, glm::Vec4::new(1.0, 0.6, 0.6, 0.4)),
         );
         meshes.insert(MeshType::GroundPlane, make_rough_ground_plane(&device));
+
+        meshes.insert(MeshType::Tetradron, make_tetrahedron(&device));
 
         for n_sides in 3..=70 {
             let mesh = make_n_gon(&device, n_sides);
@@ -260,7 +261,7 @@ impl<'a> Renderer<'a> {
         draw_mesh(rp, mesh);
     }
 
-    fn draw_texture(&mut self, rp: &mut wgpu::RenderPass, world: &World) {
+    fn draw_3d(&mut self, rp: &mut wgpu::RenderPass, world: &World) {
         self.standard_3d_pipeline
             .set_draw_wireframes(self.draw_wireframes);
         rp.set_pipeline(self.standard_3d_pipeline.pipeline());
@@ -277,13 +278,52 @@ impl<'a> Renderer<'a> {
         rp.set_bind_group(1, self.fun_quad_material.bind_group(), &[]);
 
         for i in 0..world.quads.len() {
-            let bg = self.ubo.bind_group(i);
-            let mesh = self.meshes.get(&world.quads[i].mesh_type).unwrap();
+            if let EntityKind::Mesh(mesh_type) = &world.quads[i].kind {
+                let bg = self.ubo.bind_group(i);
+                let mesh = self.meshes.get(&mesh_type).unwrap();
 
-            mesh.set_as_active(rp);
+                mesh.set_as_active(rp);
 
-            rp.set_bind_group(0, bg, &[]);
-            rp.draw_indexed(0..mesh.index_count(), 0, 0..1);
+                rp.set_bind_group(0, bg, &[]);
+                rp.draw_indexed(0..mesh.index_count(), 0, 0..1);
+            }
+        }
+
+        let mesh = self.meshes.get(&MeshType::Quad).unwrap();
+
+        let (sx, sy) = self.window.get_size();
+
+        let width_pixels = 300;
+        let height_pixels = 200;
+        let padding = 12;
+
+        let width = (width_pixels - padding) as f32 / sx as f32;
+        let height = (height_pixels - padding) as f32 / sy as f32;
+
+        let mut i = 0;
+
+        let camera_proj = world.camera.to_projection_matrix(self.window);
+        let t = (world.time / 3.0).sin() * 0.5 + 0.5;
+        let eye = mat4_identity();
+        let proj = mat4_lerp(&camera_proj, &eye, t);
+
+        for obj in &world.quads {
+            let EntityKind::LavaLamp { x, y } = obj.kind else {
+                continue;
+            };
+
+            let xoff = 2.0 * x as f32 / sx as f32;
+            let yoff = 2.0 * y as f32 / sy as f32;
+            let tf = proj
+                * translation_matrix(Vec3::new(xoff, yoff, 0.0))
+                * mat4_diagonal(width, height, 1.0, 1.0);
+            self.lava_lamp_pipeline
+                .draw(rp, mesh, &tf, &self.common_shader_info, &self.queue, i);
+
+            i += 1;
+            if i >= 250 {
+                break;
+            }
         }
     }
 
@@ -380,7 +420,6 @@ impl<'a> Renderer<'a> {
             let mut renderpass = command_encoder.begin_render_pass(&render_pass_descriptor);
 
             match self.pipeline_selector {
-                PipelineSelector::Lava => {}
                 PipelineSelector::Loading => {
                     self.draw_loading(&mut renderpass);
                 }
@@ -388,46 +427,7 @@ impl<'a> Renderer<'a> {
                     self.draw_map(&mut renderpass);
                 }
                 PipelineSelector::World3d => {
-                    self.draw_texture(&mut renderpass, &world);
-
-                    let mesh = self.meshes.get(&MeshType::Quad).unwrap();
-
-                    let (sx, sy) = self.window.get_size();
-                    let aspect = sx as f32 / sy as f32;
-
-                    let pixels = 300;
-                    let padding = 70;
-                    let size = (pixels - padding) as f32 / sx as f32;
-
-                    let mut i = 0;
-
-                    let camera_proj = world.camera.to_projection_matrix(self.window);
-                    let t = (world.time / 3.0).sin() * 0.5 + 0.5;
-                    let eye = mat4_identity();
-                    let proj = mat4_lerp(&camera_proj, &eye, t);
-
-                    'outer: for x in (-1000..=1000).step_by(pixels) {
-                        for y in (-500..=500).step_by(pixels) {
-                            let xoff = x as f32 / sx as f32;
-                            let yoff = y as f32 / sy as f32;
-                            let tf = proj
-                                * translation_matrix(Vec3::new(xoff, yoff, 0.0))
-                                * mat4_diagonal(size / aspect, size, 1.0, 1.0);
-                            self.lava_lamp_pipeline.draw(
-                                &mut renderpass,
-                                mesh,
-                                &tf,
-                                &self.common_shader_info,
-                                &self.queue,
-                                i,
-                            );
-
-                            i += 1;
-                            if i >= 250 {
-                                break 'outer;
-                            }
-                        }
-                    }
+                    self.draw_3d(&mut renderpass, &world);
                 }
             }
         }

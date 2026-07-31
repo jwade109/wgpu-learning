@@ -1,12 +1,22 @@
 use glm::*;
 
-use crate::{model::{Camera, CameraControls}, renderer_backend::mat4_identity};
+use crate::{
+    model::{Camera, CameraControls},
+    renderer_backend::mat4_identity,
+};
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub enum EntityKind {
+    Mesh(MeshType),
+    LavaLamp { x: i32, y: i32 },
+}
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub enum MeshType {
     Quad,
     Polygon(usize),
     Cube,
+    Tetradron,
     GroundPlane,
 }
 
@@ -14,7 +24,7 @@ pub struct Object {
     pub position: Vec3,
     pub angle: f32,
     pub vel: f32,
-    pub mesh_type: MeshType,
+    pub kind: EntityKind,
     pub should_animate: bool,
 }
 

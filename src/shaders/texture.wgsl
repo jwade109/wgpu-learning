@@ -31,7 +31,7 @@ struct FragmentShaderOut {
 }
 
 @vertex
-fn vs_main(vertex: Vertex) -> VertexShaderOut {
+fn vs_main(vertex: Vertex, @builtin(instance_index) instanceIndex: u32) -> VertexShaderOut {
     var out: VertexShaderOut;
     out.world_space_position = transform * vec4<f32>(vertex.position, 1.0);
     out.position = camera_projection * out.world_space_position;

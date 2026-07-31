@@ -36,7 +36,7 @@ impl Camera {
             desired_heading: 0.2,
             desired_altitude: 9.0,
             desired_radius: 17.0,
-            target: Vec3::new(0.0, 0.0, 0.0),
+            target: Vec3::new(0.0, 5.0, 0.0),
         }
     }
 
@@ -84,6 +84,8 @@ impl Camera {
             }
             _ => (),
         }
+
+        self.desired_radius = self.desired_radius.clamp(1.0, 250.0);
     }
 
     pub fn to_projection_matrix(&self, window: &glfw::Window) -> Mat4 {
@@ -108,7 +110,7 @@ impl Camera {
         let (sx, sy) = window.get_size();
         let aspect = sx as f32 / sy as f32;
         let z_near = 0.1;
-        let z_far = 100.0;
+        let z_far = 1000.0;
         let projection = ext::perspective(fov_y, aspect, z_near, z_far);
 
         projection * view

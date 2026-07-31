@@ -203,6 +203,43 @@ pub fn make_cube(device: &wgpu::Device, color: Vec4) -> Mesh {
     mesh_from_vi(device, &vertices, &indices)
 }
 
+pub fn make_tetrahedron(device: &wgpu::Device) -> Mesh {
+    let inv_rt2 = 1.0 / 2.0f32.sqrt();
+
+    let mut vertices = vec![
+        Vertex::new(
+            Vec3::new(1.0, -inv_rt2, 0.0),
+            Vec4::new(1.0, 0.0, 0.0, 1.0),
+            Vec2::new(0.0, 0.0),
+        ),
+        Vertex::new(
+            Vec3::new(-1.0, -inv_rt2, 0.0),
+            Vec4::new(0.0, 1.0, 0.0, 1.0),
+            Vec2::new(0.0, 0.0),
+        ),
+        Vertex::new(
+            Vec3::new(0.0, inv_rt2, 1.0),
+            Vec4::new(0.0, 0.0, 1.0, 1.0),
+            Vec2::new(0.0, 0.0),
+        ),
+        Vertex::new(
+            Vec3::new(0.0, inv_rt2, -1.0),
+            Vec4::new(1.0, 0.0, 1.0, 1.0),
+            Vec2::new(0.0, 0.0),
+        ),
+    ];
+
+    #[rustfmt::skip]
+    let indices = vec![
+        2, 1, 0,
+        3, 2, 1,
+        3, 1, 0,
+        0, 2, 3,
+    ];
+
+    mesh_from_vi(device, &vertices, &indices)
+}
+
 pub fn make_rough_ground_plane(device: &wgpu::Device) -> Mesh {
     let mut vertices = Vec::new();
     let mut indices = Vec::new();
