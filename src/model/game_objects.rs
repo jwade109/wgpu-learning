@@ -1,5 +1,7 @@
 use glm::*;
 
+use crate::renderer_backend::mat4_identity;
+
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub enum MeshType {
     Quad,
@@ -18,15 +20,9 @@ pub struct Object {
 
 impl Object {
     pub fn get_transform_matrix(&self) -> Matrix4<f32> {
-        let c0 = glm::Vec4::new(1.0, 0.0, 0.0, 0.0);
-        let c1 = glm::Vec4::new(0.0, 1.0, 0.0, 0.0);
-        let c2 = glm::Vec4::new(0.0, 0.0, 1.0, 0.0);
-        let c3 = glm::Vec4::new(0.0, 0.0, 0.0, 1.0);
-        let m1 = glm::Matrix4::new(c0, c1, c2, c3);
-        let m2 = glm::Matrix4::new(c0, c1, c2, c3);
-
-        let matrix = ext::translate(&m1, self.position)
-            * ext::rotate(&m2, self.angle, glm::Vector3::new(0.0, 0.0, 1.0));
+        let eye = mat4_identity();
+        let matrix = ext::translate(&eye, self.position)
+            * ext::rotate(&eye, self.angle, glm::Vector3::new(0.0, 0.0, 1.0));
 
         matrix
     }
@@ -59,12 +55,7 @@ impl Camera {
             Vec4::new(0.0, 0.0, 0.0, 1.0),
         );
 
-        let translation = Matrix4::new(
-            Vec4::new(1.0, 0.0, 0.0, 0.0),
-            Vec4::new(0.0, 1.0, 0.0, 0.0),
-            Vec4::new(0.0, 0.0, 1.0, 0.0),
-            Vec4::new(-self.eye.x, -self.eye.y, -self.eye.z, 1.0),
-        );
+        let translation = translation_matrix(-self.eye);
 
         let view = orientation * translation;
 
@@ -77,6 +68,15 @@ impl Camera {
 
         projection * view
     }
+}
+
+pub fn translation_matrix(p: Vec3) -> Mat4 {
+    Matrix4::new(
+        Vec4::new(1.0, 0.0, 0.0, 0.0),
+        Vec4::new(0.0, 1.0, 0.0, 0.0),
+        Vec4::new(0.0, 0.0, 1.0, 0.0),
+        Vec4::new(p.x, p.y, p.z, 1.0),
+    )
 }
 
 pub struct World {

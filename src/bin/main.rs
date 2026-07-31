@@ -91,8 +91,6 @@ async fn run() {
 
     let mut world = make_world();
 
-    renderer.build_ubos_for_objects(world.quads.len());
-
     while !renderer.window.should_close() {
         glfw.poll_events();
 

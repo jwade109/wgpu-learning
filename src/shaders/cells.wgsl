@@ -1,6 +1,7 @@
 // import("common.wgsl")
 
 @group(0) @binding(0) var<uniform> uniform_data: ShaderParams;
+@group(1) @binding(0) var<uniform> camera_projection: mat4x4<f32>;
 
 struct ShaderParams {
     mouse_pos: vec2<f32>,
@@ -21,7 +22,7 @@ struct VertexShaderOutput {
 @vertex
 fn vs_main(vertex: Vertex) -> VertexShaderOutput {
     var out: VertexShaderOutput;
-    out.position = vec4<f32>(vertex.position, 1.0);
+    out.position = camera_projection * vec4<f32>(vertex.position, 1.0);
     out.color = vertex.color;
     return out;
 }

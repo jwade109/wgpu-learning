@@ -49,8 +49,8 @@ impl UBO {
         }
     }
 
-    pub fn bind_group(&self, i: usize) -> Option<&wgpu::BindGroup> {
-        self.bind_groups.get(i)
+    pub fn bind_group(&self, i: usize) -> &wgpu::BindGroup {
+        self.bind_groups.get(i).expect("Hey you dufus")
     }
 
     pub fn upload(&mut self, i: u64, matrix: &glm::Mat4, queue: &wgpu::Queue) {

@@ -1,5 +1,6 @@
 use crate::{model::*, renderer_backend::*};
 use enum_iterator::Sequence;
+use glm::Vec3;
 use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 
@@ -34,7 +35,7 @@ pub struct Renderer<'a> {
     fun_quad_material: SpriteMaterial,
     depth_texture: Texture,
 
-    ubo: Option<UBO>,
+    ubo: UBO,
 
     common_shader_info: SingleUBO,
 }
@@ -189,6 +190,14 @@ impl<'a> Renderer<'a> {
             builder.build("uniform buffer")
         };
 
+        let ubo_bind_group_layout = {
+            let mut builder = BindGroupLayoutBuilder::new(&device);
+            builder.add_ubo();
+            builder.build("UBO Bind Group Layout")
+        };
+
+        let ubo = UBO::new(&device, 250, ubo_bind_group_layout);
+
         Self {
             paused: false,
             mouse_pos_smoothed: [0.0, 0.0],
@@ -205,7 +214,7 @@ impl<'a> Renderer<'a> {
             standard_3d_pipeline,
             meshes,
             fun_quad_material,
-            ubo: None,
+            ubo,
             common_shader_info: SingleUBO {
                 buffer: uniform_buffer,
                 bind_group: uniform_bind_group,
@@ -235,28 +244,11 @@ impl<'a> Renderer<'a> {
             .unwrap();
     }
 
-    pub fn build_ubos_for_objects(&mut self, object_count: usize) {
-        let ubo_bind_group_layout = {
-            let mut builder = BindGroupLayoutBuilder::new(&self.device);
-            builder.add_ubo();
-            builder.build("UBO Bind Group Layout")
-        };
-        self.ubo = Some(UBO::new(&self.device, object_count, ubo_bind_group_layout));
-    }
-
     fn draw_loading(&self, rp: &mut wgpu::RenderPass) {
         rp.set_pipeline(&self.loading_animation_pipeline);
-
-        let bg = self
-            .ubo
-            .as_ref()
-            .map(|e| e.bind_group(0))
-            .flatten()
-            .unwrap();
-
+        let bg = self.ubo.bind_group(0);
         rp.set_bind_group(0, &self.common_shader_info.bind_group, &[]);
         rp.set_bind_group(1, bg, &[]);
-
         let mesh = self.meshes.get(&MeshType::Quad).unwrap();
         draw_mesh(rp, mesh);
     }
@@ -278,23 +270,14 @@ impl<'a> Renderer<'a> {
         {
             for i in 0..world.quads.len() {
                 let matrix = world.quads[i].get_transform_matrix();
-                self.ubo
-                    .as_mut()
-                    .unwrap()
-                    .upload(i as u64, &matrix, &self.queue);
+                self.ubo.upload(i as u64, &matrix, &self.queue);
             }
         }
 
         rp.set_bind_group(1, self.fun_quad_material.bind_group(), &[]);
 
         for i in 0..world.quads.len() {
-            let bg = self
-                .ubo
-                .as_ref()
-                .map(|e| e.bind_group(i))
-                .flatten()
-                .unwrap();
-
+            let bg = self.ubo.bind_group(i);
             let mesh = self.meshes.get(&world.quads[i].mesh_type).unwrap();
 
             mesh.set_as_active(rp);
@@ -397,11 +380,7 @@ impl<'a> Renderer<'a> {
             let mut renderpass = command_encoder.begin_render_pass(&render_pass_descriptor);
 
             match self.pipeline_selector {
-                PipelineSelector::Lava => {
-                    let mesh = self.meshes.get(&MeshType::Quad).unwrap();
-                    self.lava_lamp_pipeline
-                        .draw(&mut renderpass, mesh, &self.common_shader_info);
-                }
+                PipelineSelector::Lava => {}
                 PipelineSelector::Loading => {
                     self.draw_loading(&mut renderpass);
                 }
@@ -410,6 +389,35 @@ impl<'a> Renderer<'a> {
                 }
                 PipelineSelector::World3d => {
                     self.draw_texture(&mut renderpass, &world);
+
+                    let mesh = self.meshes.get(&MeshType::Quad).unwrap();
+
+                    let (sx, sy) = self.window.get_size();
+                    let aspect = sx as f32 / sy as f32;
+
+                    let pixels = 450.0;
+                    let size = pixels / sx as f32;
+
+                    let mut i = 0;
+
+                    for x in [-1000, -500, 0, 500, 1000] {
+                        for y in [-500, 0, 500] {
+                            let xoff = x as f32 / sx as f32;
+                            let yoff = y as f32 / sy as f32;
+                            let tf = translation_matrix(Vec3::new(xoff, yoff, 0.0))
+                                * mat4_diagonal(size / aspect, size, 1.0, 1.0);
+                            self.lava_lamp_pipeline.draw(
+                                &mut renderpass,
+                                mesh,
+                                &tf,
+                                &self.common_shader_info,
+                                &self.queue,
+                                i,
+                            );
+
+                            i += 1;
+                        }
+                    }
                 }
             }
         }
