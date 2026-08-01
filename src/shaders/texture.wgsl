@@ -48,6 +48,10 @@ fn fs_main(in: VertexShaderOut) -> FragmentShaderOut {
     // c.y = pow(c.y, 2.0);
     // c.z = pow(c.z, 2.0);
 
+    // out.color = c;
+
+    // return out;
+
     var l = light_source;
     let range = 1.0 + sin(params.time) * 0.2;
 

@@ -121,31 +121,23 @@ fn get_lava_lamp_color(in: VertexShaderOutput) -> vec4<f32> {
         }
     }
 
-    // let bg_color = vec3<f32>(0.75, 0.5, 0.25);
     let bg_color = vec3<f32>(0.0, 0.0, 0.0);
 
     return vec4<f32>(bg_color, 1.0);
-
-    // let m = 1.0 - smoothstep(-5.0, 5.0, dmin);
-
-
-    // let r = 1.0 - smoothstep(-70.0, -50.0, dmin);
-    // let g = smoothstep(50.0, 60.0, dmin) * (1.0 - smoothstep(50.0, 60.0, dmin));
-    // let b = smoothstep(0.0, 20.0, dmin) * (1.0 - smoothstep(0.0, 20.0, dmin));
-
-    // let r_bg = 0.75 * (1.0 - r);
-    // let g_bg = 0.5  * (1.0 - g);
-    // let b_bg = 0.25 * (1.0 - b);
-
-    // let blob_color = vec3<f32>(r, g, b);
-
-
-    // let color = bg_color;
-
 }
 
 @fragment
 fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
-    var c = mix(in.color, get_lava_lamp_color(in), 1.0);;
-    return c;
+    // var c = vec4<f32>(0.3, 0.3, 0.3, 0.5);
+
+
+    // c.x = pow(c.x, 2.0);
+    // c.y = pow(c.y, 2.0);
+    // c.z = pow(c.z, 2.0);
+
+
+    // var c = mix(in.color, get_lava_lamp_color(in), 1.0);;
+    // return c;
+
+    return get_lava_lamp_color(in);
 }

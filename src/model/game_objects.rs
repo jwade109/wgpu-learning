@@ -8,7 +8,12 @@ use crate::{
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub enum EntityKind {
     Mesh(MeshType),
-    LavaLamp { x: i32, y: i32 },
+    LavaLamp {
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    },
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -51,6 +56,21 @@ impl World {
             quads: Vec::new(),
             camera: Camera::new(),
         }
+    }
+
+    pub fn ui(&mut self, x: i32, y: i32, w: i32, h: i32) {
+        self.quads.push(Object {
+            position: Vec3::new(5.0, 5.0, 5.0),
+            angle: 0.0,
+            vel: 1.0,
+            kind: EntityKind::LavaLamp {
+                x,
+                y,
+                width: w,
+                height: h,
+            },
+            should_animate: true,
+        });
     }
 
     pub fn update(&mut self, dt: f32, ctrls: &CameraControls) {

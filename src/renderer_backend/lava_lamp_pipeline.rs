@@ -3,7 +3,7 @@ use wgpu::*;
 
 pub struct LavaLampPipeline {
     pipeline: RenderPipeline,
-    camera_ubo: UBO,
+    camera_ubo: UBO<glm::Mat4>,
 }
 
 impl LavaLampPipeline {

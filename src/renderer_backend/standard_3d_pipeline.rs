@@ -6,7 +6,7 @@ pub struct Standard3DPipeline {
     standard: RenderPipeline,
     wireframe: RenderPipeline,
     draw_wireframes: bool,
-    camera_ubo: UBO,
+    camera_ubo: UBO<glm::Mat4>,
     lighting_ubo: SingleUBO,
 }
 

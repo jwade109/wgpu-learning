@@ -1,7 +1,5 @@
 use glm::*;
 
-use crate::renderer_backend::mat4_identity;
-
 pub struct Camera {
     heading: f32,
     altitude: f32,

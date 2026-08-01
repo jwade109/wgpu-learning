@@ -62,32 +62,46 @@ fn make_world() -> World {
         });
     }
 
-    for (x, y) in [
-        (-300, -200),
-        (-600, -200),
-        (-600, -400),
-        (-300, -400),
-        (-900, -200),
-        (-900, -400),
+    for (x, y, w, h) in [
+        (0, 0, 1, 1),
+        (1, 0, 1, 1),
+        (2, 0, 1, 1),
+        // y = 1
+        (1, 1, 2, 2),
+        (3, 1, 2, 1),
+        (5, 1, 3, 1),
+        (8, 1, 1, 1),
+        // y = 2
+        (3, 2, 1, 1),
+        (4, 2, 1, 3),
+        (5, 2, 2, 1),
+        (7, 2, 1, 1),
+        // y = 3
+        (1, 3, 1, 1),
+        (2, 3, 1, 1),
+        (3, 3, 1, 1),
+        (5, 3, 1, 1),
+        (6, 3, 1, 1),
+        (7, 3, 1, 1),
+        // y = 4
+        (3, 4, 1, 1),
+        (5, 4, 2, 1),
+        // y = 6
+        (6, 6, 2, 2),
+        // y = 7
+        (2, 7, 1, 1),
+        (3, 7, 1, 1),
+        (4, 7, 2, 1),
+        (8, 7, 3, 1),
     ] {
-        world.quads.push(Object {
-            position: Vec3::new(5.0, 5.0, 5.0),
-            angle: 0.0,
-            vel: 1.0,
-            kind: EntityKind::LavaLamp { x, y },
-            should_animate: true,
-        });
+        let size = 150;
+        let pad = 10;
+        let x = x * (size + pad) + pad;
+        let y = y * (size + pad) + pad;
+        let w = w * size + (w - 1) * pad;
+        let h = h * size + (h - 1) * pad;
+        world.ui(x, y, w, h);
     }
-
-    // for y in (3..20).step_by(2) {
-    //     world.quads.push(Object {
-    //         position: Vec3::new(0.0, y as f32, 0.0),
-    //         angle: 0.0,
-    //         vel: 0.0,
-    //         mesh_type: MeshType::Cube,
-    //         should_animate: false,
-    //     });
-    // }
 
     world
 }

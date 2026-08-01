@@ -1,6 +1,6 @@
 use crate::{model::*, renderer_backend::*};
 use enum_iterator::Sequence;
-use glm::Vec3;
+use glm::{Mat4, Vec3, Vec4};
 use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 
@@ -28,13 +28,15 @@ pub struct Renderer<'a> {
     loading_animation_pipeline: wgpu::RenderPipeline,
     map_pipeline: wgpu::RenderPipeline,
     standard_3d_pipeline: Standard3DPipeline,
+    single_color_pipeline: SingleColorPipeline,
 
     meshes: HashMap<MeshType, Mesh>,
 
     fun_quad_material: SpriteMaterial,
+    font_material: SpriteMaterial,
     depth_texture: Texture,
 
-    ubo: UBO,
+    ubo: UBO<Mat4>,
 
     common_shader_info: SingleUBO,
 }
@@ -97,7 +99,7 @@ impl<'a> Renderer<'a> {
         meshes.insert(MeshType::Quad, make_quad(&device, 1.0));
         meshes.insert(
             MeshType::Cube,
-            make_cube(&device, glm::Vec4::new(1.0, 0.6, 0.6, 0.4)),
+            make_cube(&device, Vec4::new(1.0, 0.6, 0.6, 0.4)),
         );
         meshes.insert(MeshType::GroundPlane, make_rough_ground_plane(&device));
 
@@ -176,8 +178,18 @@ impl<'a> Renderer<'a> {
             &config,
         );
 
+        let single_color_pipeline = SingleColorPipeline::new(&device, &config);
+
         let fun_quad_material = SpriteMaterial::new(
             "img/invincible.jpg",
+            &device,
+            &queue,
+            "Quad Material",
+            &material_bind_group_layout,
+        );
+
+        let font_material = SpriteMaterial::new(
+            "img/font.png",
             &device,
             &queue,
             "Quad Material",
@@ -213,8 +225,10 @@ impl<'a> Renderer<'a> {
             loading_animation_pipeline,
             map_pipeline,
             standard_3d_pipeline,
+            single_color_pipeline,
             meshes,
             fun_quad_material,
+            font_material,
             ubo,
             common_shader_info: SingleUBO {
                 buffer: uniform_buffer,
@@ -275,7 +289,7 @@ impl<'a> Renderer<'a> {
             }
         }
 
-        rp.set_bind_group(1, self.fun_quad_material.bind_group(), &[]);
+        rp.set_bind_group(1, self.font_material.bind_group(), &[]);
 
         for i in 0..world.quads.len() {
             if let EntityKind::Mesh(mesh_type) = &world.quads[i].kind {
@@ -288,37 +302,51 @@ impl<'a> Renderer<'a> {
                 rp.draw_indexed(0..mesh.index_count(), 0, 0..1);
             }
         }
+    }
+
+    fn draw_ui(&mut self, rp: &mut wgpu::RenderPass, world: &World) {
+        rp.set_pipeline(self.single_color_pipeline.pipeline());
 
         let mesh = self.meshes.get(&MeshType::Quad).unwrap();
 
         let (sx, sy) = self.window.get_size();
 
-        let width_pixels = 300;
-        let height_pixels = 200;
-        let padding = 12;
-
-        let width = (width_pixels - padding) as f32 / sx as f32;
-        let height = (height_pixels - padding) as f32 / sy as f32;
-
         let mut i = 0;
 
         let camera_proj = world.camera.to_projection_matrix(self.window);
-        let t = (world.time / 3.0).sin() * 0.5 + 0.5;
+        let t = 1.0; // (world.time / 3.0).sin() * 0.5 + 0.5;
         let eye = mat4_identity();
         let proj = mat4_lerp(&camera_proj, &eye, t);
 
         for obj in &world.quads {
-            let EntityKind::LavaLamp { x, y } = obj.kind else {
+            let EntityKind::LavaLamp {
+                x,
+                y,
+                width,
+                height,
+            } = obj.kind
+            else {
                 continue;
             };
 
-            let xoff = 2.0 * x as f32 / sx as f32;
-            let yoff = 2.0 * y as f32 / sy as f32;
+            // let width = (width as f32 * (world.time.sin() * 0.2 + 0.8)).round() as i32;
+            // let height = (height as f32 * ((world.time / 1.6).cos() * 0.1 + 0.9)).round() as i32;
+
+            let width_scale = width as f32 / sx as f32;
+            let height_scale = height as f32 / sy as f32;
+
+            let xoff = 2.0 * (x as f32 + width as f32 / 2.0) / sx as f32 - 1.0;
+            let yoff = -(2.0 * (y as f32 + height as f32 / 2.0) / sy as f32 - 1.0);
             let tf = proj
                 * translation_matrix(Vec3::new(xoff, yoff, 0.0))
-                * mat4_diagonal(width, height, 1.0, 1.0);
-            self.lava_lamp_pipeline
-                .draw(rp, mesh, &tf, &self.common_shader_info, &self.queue, i);
+                * mat4_diagonal(width_scale, height_scale, 1.0, 1.0);
+
+            let r = xoff.sin() * 0.5 + 0.5;
+            let g = yoff.sin() * 0.5 + 0.5;
+            let color = Vec4::new(r, g, 0.3, 1.0);
+
+            self.single_color_pipeline
+                .draw(rp, mesh, &tf, &color, &self.queue, i);
 
             i += 1;
             if i >= 250 {
@@ -428,6 +456,9 @@ impl<'a> Renderer<'a> {
                 }
                 PipelineSelector::World3d => {
                     self.draw_3d(&mut renderpass, &world);
+                    if !self.draw_wireframes {
+                        self.draw_ui(&mut renderpass, &world);
+                    }
                 }
             }
         }

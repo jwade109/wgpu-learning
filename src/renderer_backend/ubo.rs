@@ -12,17 +12,18 @@ pub struct SingleUBO {
     pub bind_group: wgpu::BindGroup,
 }
 
-pub struct UBO {
+pub struct UBO<T> {
     buffer: wgpu::Buffer,
     bind_groups: Vec<wgpu::BindGroup>,
     alignment: u64,
+    _data: std::marker::PhantomData<T>,
 }
 
-impl UBO {
+impl<T> UBO<T> {
     pub fn new(device: &wgpu::Device, object_count: usize, layout: wgpu::BindGroupLayout) -> Self {
         let alignment = glm::max(
             device.limits().min_storage_buffer_offset_alignment as u32,
-            std::mem::size_of::<glm::Mat4>() as u32,
+            std::mem::size_of::<T>() as u32,
         ) as u64;
 
         println!("Alignment is {alignment}");
@@ -48,6 +49,7 @@ impl UBO {
             buffer,
             bind_groups,
             alignment,
+            _data: std::marker::PhantomData::default(),
         }
     }
 
@@ -55,7 +57,7 @@ impl UBO {
         self.bind_groups.get(i).expect("Hey you dufus")
     }
 
-    pub fn upload(&mut self, i: u64, matrix: &glm::Mat4, queue: &wgpu::Queue) {
+    pub fn upload(&mut self, i: u64, matrix: &T, queue: &wgpu::Queue) {
         if i as usize >= self.bind_groups.len() {
             panic!("Dude");
         }
