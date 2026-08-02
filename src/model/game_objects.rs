@@ -7,22 +7,14 @@ use crate::{
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub enum EntityKind {
-    Mesh(MeshType),
+    Mesh,
     ScreenRect {
         x: i32,
         y: i32,
         width: i32,
         height: i32,
+        texture_id: usize,
     },
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
-pub enum MeshType {
-    Quad,
-    Polygon(usize),
-    Cube,
-    Tetradron,
-    GroundPlane(i32, i32),
 }
 
 pub struct Object {
@@ -30,6 +22,7 @@ pub struct Object {
     pub angle: f32,
     pub vel: f32,
     pub kind: EntityKind,
+    pub mesh_id: usize,
     pub should_animate: bool,
 }
 
@@ -58,17 +51,18 @@ impl World {
         }
     }
 
-    pub fn ground_plane(&mut self, x: i32, z: i32) {
+    pub fn ground_plane(&mut self, x: i32, z: i32, mesh_id: usize) {
         self.quads.push(Object {
             position: Vec3::new(x as f32, 0.0, z as f32),
             angle: 0.0,
             vel: 0.0,
-            kind: EntityKind::Mesh(MeshType::GroundPlane(x, z)),
+            kind: EntityKind::Mesh,
             should_animate: false,
+            mesh_id,
         });
     }
 
-    pub fn ui(&mut self, x: i32, y: i32, w: i32, h: i32) {
+    pub fn ui(&mut self, x: i32, y: i32, w: i32, h: i32, texture_id: usize) {
         self.quads.push(Object {
             position: Vec3::new(5.0, 5.0, 5.0),
             angle: 0.0,
@@ -78,8 +72,10 @@ impl World {
                 y,
                 width: w,
                 height: h,
+                texture_id,
             },
             should_animate: true,
+            mesh_id: 0,
         });
     }
 

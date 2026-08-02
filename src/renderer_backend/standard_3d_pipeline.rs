@@ -8,6 +8,7 @@ pub struct Standard3DPipeline {
     draw_wireframes: bool,
     camera_ubo: UBO<glm::Mat4>,
     lighting_ubo: SingleUBO,
+    transforms_ubo: UBO<glm::Mat4>,
 }
 
 impl Standard3DPipeline {
@@ -79,6 +80,14 @@ impl Standard3DPipeline {
             builder.build("uniform buffer")
         };
 
+        let ubo_bind_group_layout = {
+            let mut builder = BindGroupLayoutBuilder::new(&device);
+            builder.add_ubo();
+            builder.build("UBO Bind Group Layout")
+        };
+
+        let transforms_ubo = UBO::new(&device, 250, ubo_bind_group_layout);
+
         Self {
             standard,
             wireframe,
@@ -88,7 +97,16 @@ impl Standard3DPipeline {
                 buffer,
                 bind_group: lighting_bind_group,
             },
+            transforms_ubo,
         }
+    }
+
+    pub fn transforms(&self) -> &UBO<glm::Mat4> {
+        &self.transforms_ubo
+    }
+
+    pub fn upload_transform(&mut self, i: u64, matrix: &glm::Mat4, queue: &Queue) {
+        self.transforms_ubo.upload(i, matrix, queue);
     }
 
     pub fn set_draw_wireframes(&mut self, wireframes: bool) {

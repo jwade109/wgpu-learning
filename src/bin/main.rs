@@ -4,33 +4,45 @@ use glfw::{fail_on_errors, Action, ClientApiHint, Key, WindowHint};
 use glm::*;
 use wgpu_learning::{model::*, renderer_backend::*};
 
-fn make_world() -> World {
+fn make_world(renderer: &mut Renderer) -> World {
+    let quad_id = renderer.spawn_mesh(make_quad(&renderer.device, 1.0));
+    let cube_id = renderer.spawn_mesh(make_cube(&renderer.device, Vec4::new(1.0, 0.6, 0.6, 0.4)));
+    let tetra_id = renderer.spawn_mesh(make_tetrahedron(&renderer.device));
+    let nine_gon_id = renderer.spawn_mesh(make_n_gon(&renderer.device, 9));
+
+    let fun_id = renderer.load_texture("img/invincible.jpg");
+    let font_id = renderer.load_texture("img/font.png");
+
     let mut world = World::new();
     world.quads.push(Object {
         position: Vec3::new(0.0, 6.0, -9.0),
         angle: 0.0,
         vel: 0.0,
-        kind: EntityKind::Mesh(MeshType::Polygon(9)),
+        kind: EntityKind::Mesh,
         should_animate: false,
+        mesh_id: nine_gon_id,
     });
     world.quads.push(Object {
         position: Vec3::new(0.0, 4.0, -5.6),
         angle: 0.0,
         vel: 0.0,
-        kind: EntityKind::Mesh(MeshType::Polygon(3)),
+        kind: EntityKind::Mesh,
         should_animate: false,
+        mesh_id: nine_gon_id,
     });
     world.quads.push(Object {
         position: Vec3::new(0.0, 5.0, 0.0),
         angle: 0.0,
         vel: 0.01,
-        kind: EntityKind::Mesh(MeshType::Tetradron),
+        kind: EntityKind::Mesh,
         should_animate: false,
+        mesh_id: tetra_id,
     });
 
     for x in [-100, 0, 100] {
-        for y in [-100, 0, 100] {
-            world.ground_plane(x, y);
+        for z in [-100, 0, 100] {
+            let id = renderer.spawn_ground_plane(x, z, 100);
+            world.ground_plane(x, z, id);
         }
     }
 
@@ -41,8 +53,9 @@ fn make_world() -> World {
             position: Vec3::new(4.5, 3.0, z),
             angle: a,
             vel: 0.0,
-            kind: EntityKind::Mesh(MeshType::Quad),
+            kind: EntityKind::Mesh,
             should_animate: false,
+            mesh_id: quad_id,
         });
     }
 
@@ -55,12 +68,13 @@ fn make_world() -> World {
             position: Vec3::new(x as f32, 0.0, z as f32),
             angle: i as f32 * 0.4,
             vel: 1.0,
-            kind: EntityKind::Mesh(MeshType::Cube),
+            kind: EntityKind::Mesh,
             should_animate: true,
+            mesh_id: cube_id,
         });
     }
 
-    for (x, y, w, h) in [
+    for (i, (x, y, w, h)) in [
         (0, 0, 1, 1),
         (1, 0, 1, 1),
         (2, 0, 1, 1),
@@ -91,14 +105,18 @@ fn make_world() -> World {
         (3, 7, 1, 1),
         (4, 7, 2, 1),
         (8, 7, 3, 1),
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         let size = 150;
         let pad = 10;
         let x = x * (size + pad) + pad;
         let y = y * (size + pad) + pad;
         let w = w * size + (w - 1) * pad;
         let h = h * size + (h - 1) * pad;
-        // world.ui(x, y, w, h);
+        let t = if i % 2 == 0 { fun_id } else { font_id };
+        world.ui(x, y, w, h, t);
     }
 
     world
@@ -145,7 +163,7 @@ async fn run() {
 
     // renderer.window.set_cursor_mode(glfw::CursorMode::Hidden);
 
-    let mut world = make_world();
+    let mut world = make_world(&mut renderer);
 
     while !renderer.window.should_close() {
         glfw.poll_events();

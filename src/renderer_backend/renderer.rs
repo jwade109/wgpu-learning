@@ -18,7 +18,7 @@ pub struct Renderer<'a> {
 
     instance: wgpu::Instance,
     surface: wgpu::Surface<'a>,
-    device: wgpu::Device,
+    pub device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     pub size: (i32, i32),
@@ -27,14 +27,13 @@ pub struct Renderer<'a> {
     map_pipeline: wgpu::RenderPipeline,
     standard_3d_pipeline: Standard3DPipeline,
     single_color_pipeline: SingleColorPipeline,
+    single_texture_pipeline: SingleTexturePipeline,
 
-    meshes: HashMap<MeshType, Mesh>,
+    meshes: HashMap<usize, Mesh>,
+    textures: HashMap<usize, SpriteMaterial>,
+    next_resource_id: usize,
 
-    fun_quad_material: SpriteMaterial,
-    font_material: SpriteMaterial,
     depth_texture: Texture,
-
-    ubo: UBO<Mat4>,
 
     common_shader_info: SingleUBO,
 }
@@ -91,21 +90,6 @@ impl<'a> Renderer<'a> {
             desired_maximum_frame_latency: 2,
         };
         surface.configure(&device, &config);
-
-        let mut meshes = HashMap::new();
-
-        meshes.insert(MeshType::Quad, make_quad(&device, 1.0));
-        meshes.insert(
-            MeshType::Cube,
-            make_cube(&device, Vec4::new(1.0, 0.6, 0.6, 0.4)),
-        );
-
-        meshes.insert(MeshType::Tetradron, make_tetrahedron(&device));
-
-        for n_sides in 3..=70 {
-            let mesh = make_n_gon(&device, n_sides);
-            meshes.insert(MeshType::Polygon(n_sides), mesh);
-        }
 
         let material_bind_group_layout;
         {
@@ -192,13 +176,7 @@ impl<'a> Renderer<'a> {
             builder.build("uniform buffer")
         };
 
-        let ubo_bind_group_layout = {
-            let mut builder = BindGroupLayoutBuilder::new(&device);
-            builder.add_ubo();
-            builder.build("UBO Bind Group Layout")
-        };
-
-        let ubo = UBO::new(&device, 250, ubo_bind_group_layout);
+        let single_texture_pipeline = SingleTexturePipeline::new(&device, &config);
 
         Self {
             paused: false,
@@ -214,10 +192,10 @@ impl<'a> Renderer<'a> {
             map_pipeline,
             standard_3d_pipeline,
             single_color_pipeline,
-            meshes,
-            fun_quad_material,
-            font_material,
-            ubo,
+            single_texture_pipeline,
+            meshes: HashMap::new(),
+            textures: HashMap::new(),
+            next_resource_id: 0,
             common_shader_info: SingleUBO {
                 buffer: uniform_buffer,
                 bind_group: uniform_bind_group,
@@ -229,14 +207,31 @@ impl<'a> Renderer<'a> {
         }
     }
 
-    pub fn spawn_ground_plane(&mut self, x: i32, z: i32, n_quads: u16) {
-        let key = MeshType::GroundPlane(x, z);
-        if self.meshes.contains_key(&key) {
-            return;
-        }
+    pub fn spawn_mesh(&mut self, mesh: Mesh) -> usize {
+        let id = self.next_resource_id;
+        self.next_resource_id += 1;
+        self.meshes.insert(id, mesh);
+        id
+    }
 
+    pub fn load_texture(&mut self, path: &str) -> usize {
+        let bind_group_layout = {
+            let mut builder = BindGroupLayoutBuilder::new(&self.device);
+            builder.add_material();
+            builder.build(path)
+        };
+
+        let sprite = SpriteMaterial::new(path, &self.device, &self.queue, path, &bind_group_layout);
+
+        let id = self.next_resource_id;
+        self.next_resource_id += 1;
+        self.textures.insert(id, sprite);
+        id
+    }
+
+    pub fn spawn_ground_plane(&mut self, x: i32, z: i32, n_quads: u16) -> usize {
         let mesh = make_rough_ground_plane(&self.device, Vec2::new(x as f32, z as f32), n_quads);
-        self.meshes.insert(key, mesh);
+        self.spawn_mesh(mesh)
     }
 
     pub fn resize(&mut self, new_size: (i32, i32)) {
@@ -260,40 +255,31 @@ impl<'a> Renderer<'a> {
     fn draw_map(&self, rp: &mut wgpu::RenderPass) {
         rp.set_pipeline(&self.map_pipeline);
         rp.set_bind_group(0, &self.common_shader_info.bind_group, &[]);
-        let mesh = self.meshes.get(&MeshType::Quad).unwrap();
+        let mesh = self.meshes.get(&0).unwrap();
         draw_mesh(rp, mesh);
     }
 
     fn draw_3d(&mut self, rp: &mut wgpu::RenderPass, world: &World) {
-        for object in &world.quads {
-            let EntityKind::Mesh(MeshType::GroundPlane(x, z)) = object.kind else {
-                continue;
-            };
-
-            self.spawn_ground_plane(x, z, 100);
-        }
-
         self.standard_3d_pipeline
             .set_draw_wireframes(self.draw_wireframes);
         rp.set_pipeline(self.standard_3d_pipeline.pipeline());
         rp.set_bind_group(2, &self.common_shader_info.bind_group, &[]);
         self.standard_3d_pipeline.set_bindings(rp);
 
-        {
-            for i in 0..world.quads.len() {
-                let matrix = world.quads[i].get_transform_matrix();
-                self.ubo.upload(i as u64, &matrix, &self.queue);
-            }
+        for i in 0..world.quads.len() {
+            let matrix = world.quads[i].get_transform_matrix();
+            self.standard_3d_pipeline
+                .upload_transform(i as u64, &matrix, &self.queue);
         }
 
-        rp.set_bind_group(1, self.font_material.bind_group(), &[]);
+        rp.set_bind_group(1, self.textures.values().next().unwrap().bind_group(), &[]);
 
         for i in 0..world.quads.len() {
-            if let EntityKind::Mesh(mesh_type) = &world.quads[i].kind {
-                let bg = self.ubo.bind_group(i);
+            if let EntityKind::Mesh = &world.quads[i].kind {
+                let bg = self.standard_3d_pipeline.transforms().bind_group(i);
 
-                let Some(mesh) = self.meshes.get(&mesh_type) else {
-                    println!("Failed to get mesh of type {mesh_type:?}");
+                let Some(mesh) = self.meshes.get(&world.quads[i].mesh_id) else {
+                    println!("Failed to get mesh of type {:?}", world.quads[i].mesh_id);
                     continue;
                 };
 
@@ -306,50 +292,41 @@ impl<'a> Renderer<'a> {
     }
 
     fn draw_ui(&mut self, rp: &mut wgpu::RenderPass, world: &World) {
-        rp.set_pipeline(self.single_color_pipeline.pipeline());
-
-        let mesh = self.meshes.get(&MeshType::Quad).unwrap();
-
+        let mesh = self.meshes.get(&0).unwrap();
         let (sx, sy) = self.window.get_size();
 
-        let mut i = 0;
-
-        let camera_proj = world.camera.to_projection_matrix(self.window);
-        let t = 1.0; // (world.time / 3.0).sin() * 0.5 + 0.5;
-        let eye = mat4_identity();
-        let proj = mat4_lerp(&camera_proj, &eye, t);
-
-        for obj in &world.quads {
+        for (i, obj) in world.quads.iter().enumerate() {
             let EntityKind::ScreenRect {
                 x,
                 y,
                 width,
                 height,
+                texture_id,
             } = obj.kind
             else {
                 continue;
             };
-
-            // let width = (width as f32 * (world.time.sin() * 0.2 + 0.8)).round() as i32;
-            // let height = (height as f32 * ((world.time / 1.6).cos() * 0.1 + 0.9)).round() as i32;
 
             let width_scale = width as f32 / sx as f32;
             let height_scale = height as f32 / sy as f32;
 
             let xoff = 2.0 * (x as f32 + width as f32 / 2.0) / sx as f32 - 1.0;
             let yoff = -(2.0 * (y as f32 + height as f32 / 2.0) / sy as f32 - 1.0);
-            let tf = proj
+            let transform = mat4_diagonal(1.0, 1.0, 1.0, 1.0)
                 * translation_matrix(Vec3::new(xoff, yoff, 0.0))
                 * mat4_diagonal(width_scale, height_scale, 1.0, 1.0);
 
-            let r = xoff.sin() * 0.5 + 0.5;
-            let g = yoff.sin() * 0.5 + 0.5;
-            let color = Vec4::new(r, g, 0.3, 1.0);
+            let material = self.textures.get(&texture_id).unwrap();
 
-            self.single_color_pipeline
-                .draw(rp, mesh, &tf, &color, &self.queue, i);
+            self.single_texture_pipeline.draw(
+                rp,
+                mesh,
+                material,
+                &transform,
+                &self.queue,
+                i as u64,
+            );
 
-            i += 1;
             if i >= 250 {
                 break;
             }
