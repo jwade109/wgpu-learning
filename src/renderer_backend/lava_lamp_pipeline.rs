@@ -22,8 +22,13 @@ impl LavaLampPipeline {
         let shader = Shader::from_path("src/shaders/cells.wgsl");
         builder.add_bind_group_layout(time_etc_data_bind_group);
         builder.add_bind_group_layout(&camera_projection_bind_group_layout);
-        let pipeline =
-            builder.build_pipeline("Lava Lamp Pipeline", &shader, config.format, true, true);
+        let pipeline = builder.build_pipeline::<FullVertex>(
+            "Lava Lamp Pipeline",
+            &shader,
+            config.format,
+            true,
+            true,
+        );
 
         let camera_ubo = UBO::new(&device, 250, camera_projection_bind_group_layout);
 

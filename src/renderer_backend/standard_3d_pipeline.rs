@@ -37,8 +37,13 @@ impl Standard3DPipeline {
         builder.add_bind_group_layout(time_etc_data_bind_group);
         builder.add_bind_group_layout(&camera_projection_bind_group_layout);
         builder.add_bind_group_layout(&lighting_bind_group_layout);
-        let standard =
-            builder.build_pipeline("Standard 3D Pipeline", &shader, config.format, true, true);
+        let standard = builder.build_pipeline::<FullVertex>(
+            "Standard 3D Pipeline",
+            &shader,
+            config.format,
+            true,
+            true,
+        );
 
         let wireframe = {
             let mut builder = PipelineBuilder::new(&device);
@@ -48,7 +53,13 @@ impl Standard3DPipeline {
             builder.add_bind_group_layout(&camera_projection_bind_group_layout);
             builder.add_bind_group_layout(&lighting_bind_group_layout);
             builder.wireframes();
-            builder.build_pipeline("Texture Pipeline", &shader, config.format, true, false)
+            builder.build_pipeline::<FullVertex>(
+                "Texture Pipeline",
+                &shader,
+                config.format,
+                true,
+                false,
+            )
         };
 
         let camera_ubo = UBO::new(&device, 1, camera_projection_bind_group_layout);

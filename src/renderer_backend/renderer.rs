@@ -1,12 +1,11 @@
 use crate::{model::*, renderer_backend::*};
 use enum_iterator::Sequence;
-use glm::{Mat4, Vec3, Vec4};
+use glm::{Mat4, Vec2, Vec3, Vec4};
 use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 
 #[derive(PartialEq, Eq, Sequence)]
 pub enum PipelineSelector {
-    Loading,
     Map,
     World3d,
 }
@@ -25,7 +24,6 @@ pub struct Renderer<'a> {
     pub size: (i32, i32),
     pub window: &'a mut glfw::Window,
     lava_lamp_pipeline: LavaLampPipeline,
-    loading_animation_pipeline: wgpu::RenderPipeline,
     map_pipeline: wgpu::RenderPipeline,
     standard_3d_pipeline: Standard3DPipeline,
     single_color_pipeline: SingleColorPipeline,
@@ -101,7 +99,6 @@ impl<'a> Renderer<'a> {
             MeshType::Cube,
             make_cube(&device, Vec4::new(1.0, 0.6, 0.6, 0.4)),
         );
-        meshes.insert(MeshType::GroundPlane, make_rough_ground_plane(&device));
 
         meshes.insert(MeshType::Tetradron, make_tetrahedron(&device));
 
@@ -155,19 +152,11 @@ impl<'a> Renderer<'a> {
 
         let lava_lamp_pipeline = LavaLampPipeline::new(&device, &time_etc_data_bind_group, &config);
 
-        let loading_animation_pipeline = {
-            let mut builder = PipelineBuilder::new(&device);
-            let shader = Shader::from_path("src/shaders/loading.wgsl");
-            builder.add_bind_group_layout(&time_etc_data_bind_group);
-            builder.add_bind_group_layout(&ubo_bind_group_layout);
-            builder.build_pipeline("Lava Lamp Pipeline", &shader, config.format, true, true)
-        };
-
         let map_pipeline = {
             let mut builder = PipelineBuilder::new(&device);
             let shader = Shader::from_path("src/shaders/map.wgsl");
             builder.add_bind_group_layout(&time_etc_data_bind_group);
-            builder.build_pipeline("Map Pipeline", &shader, config.format, true, true)
+            builder.build_pipeline::<FullVertex>("Map Pipeline", &shader, config.format, true, true)
         };
 
         let standard_3d_pipeline = Standard3DPipeline::new(
@@ -222,7 +211,6 @@ impl<'a> Renderer<'a> {
             config,
             size,
             lava_lamp_pipeline,
-            loading_animation_pipeline,
             map_pipeline,
             standard_3d_pipeline,
             single_color_pipeline,
@@ -239,6 +227,16 @@ impl<'a> Renderer<'a> {
             draw_wireframes: false,
             depth_texture,
         }
+    }
+
+    pub fn spawn_ground_plane(&mut self, x: i32, z: i32, n_quads: u16) {
+        let key = MeshType::GroundPlane(x, z);
+        if self.meshes.contains_key(&key) {
+            return;
+        }
+
+        let mesh = make_rough_ground_plane(&self.device, Vec2::new(x as f32, z as f32), n_quads);
+        self.meshes.insert(key, mesh);
     }
 
     pub fn resize(&mut self, new_size: (i32, i32)) {
@@ -259,15 +257,6 @@ impl<'a> Renderer<'a> {
             .unwrap();
     }
 
-    fn draw_loading(&self, rp: &mut wgpu::RenderPass) {
-        rp.set_pipeline(&self.loading_animation_pipeline);
-        let bg = self.ubo.bind_group(0);
-        rp.set_bind_group(0, &self.common_shader_info.bind_group, &[]);
-        rp.set_bind_group(1, bg, &[]);
-        let mesh = self.meshes.get(&MeshType::Quad).unwrap();
-        draw_mesh(rp, mesh);
-    }
-
     fn draw_map(&self, rp: &mut wgpu::RenderPass) {
         rp.set_pipeline(&self.map_pipeline);
         rp.set_bind_group(0, &self.common_shader_info.bind_group, &[]);
@@ -276,6 +265,14 @@ impl<'a> Renderer<'a> {
     }
 
     fn draw_3d(&mut self, rp: &mut wgpu::RenderPass, world: &World) {
+        for object in &world.quads {
+            let EntityKind::Mesh(MeshType::GroundPlane(x, z)) = object.kind else {
+                continue;
+            };
+
+            self.spawn_ground_plane(x, z, 100);
+        }
+
         self.standard_3d_pipeline
             .set_draw_wireframes(self.draw_wireframes);
         rp.set_pipeline(self.standard_3d_pipeline.pipeline());
@@ -294,7 +291,11 @@ impl<'a> Renderer<'a> {
         for i in 0..world.quads.len() {
             if let EntityKind::Mesh(mesh_type) = &world.quads[i].kind {
                 let bg = self.ubo.bind_group(i);
-                let mesh = self.meshes.get(&mesh_type).unwrap();
+
+                let Some(mesh) = self.meshes.get(&mesh_type) else {
+                    println!("Failed to get mesh of type {mesh_type:?}");
+                    continue;
+                };
 
                 mesh.set_as_active(rp);
 
@@ -319,7 +320,7 @@ impl<'a> Renderer<'a> {
         let proj = mat4_lerp(&camera_proj, &eye, t);
 
         for obj in &world.quads {
-            let EntityKind::LavaLamp {
+            let EntityKind::ScreenRect {
                 x,
                 y,
                 width,
@@ -448,9 +449,6 @@ impl<'a> Renderer<'a> {
             let mut renderpass = command_encoder.begin_render_pass(&render_pass_descriptor);
 
             match self.pipeline_selector {
-                PipelineSelector::Loading => {
-                    self.draw_loading(&mut renderpass);
-                }
                 PipelineSelector::Map => {
                     self.draw_map(&mut renderpass);
                 }

@@ -25,8 +25,13 @@ impl SingleColorPipeline {
         let shader = Shader::from_path("src/shaders/single_color.wgsl");
         builder.add_bind_group_layout(&transforms_ubo_bind_group_layout);
         builder.add_bind_group_layout(&color_ubo_bind_group_layout);
-        let pipeline =
-            builder.build_pipeline("Lava Lamp Pipeline", &shader, config.format, true, true);
+        let pipeline = builder.build_pipeline::<FullVertex>(
+            "Lava Lamp Pipeline",
+            &shader,
+            config.format,
+            true,
+            true,
+        );
 
         let transforms_ubo = UBO::new(&device, 250, transforms_ubo_bind_group_layout);
         let color_ubo = UBO::new(&device, 250, color_ubo_bind_group_layout);

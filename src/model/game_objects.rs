@@ -8,7 +8,7 @@ use crate::{
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub enum EntityKind {
     Mesh(MeshType),
-    LavaLamp {
+    ScreenRect {
         x: i32,
         y: i32,
         width: i32,
@@ -22,7 +22,7 @@ pub enum MeshType {
     Polygon(usize),
     Cube,
     Tetradron,
-    GroundPlane,
+    GroundPlane(i32, i32),
 }
 
 pub struct Object {
@@ -58,12 +58,22 @@ impl World {
         }
     }
 
+    pub fn ground_plane(&mut self, x: i32, z: i32) {
+        self.quads.push(Object {
+            position: Vec3::new(x as f32, 0.0, z as f32),
+            angle: 0.0,
+            vel: 0.0,
+            kind: EntityKind::Mesh(MeshType::GroundPlane(x, z)),
+            should_animate: false,
+        });
+    }
+
     pub fn ui(&mut self, x: i32, y: i32, w: i32, h: i32) {
         self.quads.push(Object {
             position: Vec3::new(5.0, 5.0, 5.0),
             angle: 0.0,
             vel: 1.0,
-            kind: EntityKind::LavaLamp {
+            kind: EntityKind::ScreenRect {
                 x,
                 y,
                 width: w,

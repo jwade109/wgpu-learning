@@ -11,6 +11,7 @@ mod single_color_pipeline;
 mod standard_3d_pipeline;
 mod texture;
 mod ubo;
+mod vertex;
 
 pub use bind_group::*;
 pub use bind_group_layout::*;
@@ -25,3 +26,4 @@ pub use single_color_pipeline::*;
 pub use standard_3d_pipeline::*;
 pub use texture::*;
 pub use ubo::*;
+pub use vertex::*;

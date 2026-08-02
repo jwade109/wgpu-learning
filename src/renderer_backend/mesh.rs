@@ -1,3 +1,4 @@
+use crate::renderer_backend::*;
 use glm::*;
 use noise::{NoiseFn, Perlin};
 use wgpu::util::DeviceExt;
@@ -31,51 +32,7 @@ impl Mesh {
     }
 }
 
-#[repr(C)] // C-style data layout
-pub struct Vertex {
-    position: Vec3,
-    color: Vec4,
-    tex_coord: Vec2,
-}
-
-impl Vertex {
-    pub fn new(position: Vec3, color: Vec4, tex_coord: Vec2) -> Self {
-        Self {
-            position,
-            color,
-            tex_coord,
-        }
-    }
-
-    pub fn get_layout() -> wgpu::VertexBufferLayout<'static> {
-        const ATTRIBUTES: [wgpu::VertexAttribute; 3] =
-            wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4, 2 => Float32x2];
-
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &ATTRIBUTES,
-        }
-    }
-
-    pub fn to_bytes(&self) -> [u8; 36] {
-        let arr = [
-            self.position.x,
-            self.position.y,
-            self.position.z,
-            self.color.x,
-            self.color.y,
-            self.color.z,
-            self.color.w,
-            self.tex_coord.x,
-            self.tex_coord.y,
-        ];
-
-        bytemuck::bytes_of(&arr).try_into().unwrap()
-    }
-}
-
-fn vertices_to_bytes(vertices: &[Vertex]) -> Vec<u8> {
+fn vertices_to_bytes<T: Vertex>(vertices: &[T]) -> Vec<u8> {
     vertices
         .iter()
         .map(|v| v.to_bytes().to_vec())
@@ -91,7 +48,7 @@ fn indices_to_bytes(indices: &[u16]) -> Vec<u8> {
         .concat()
 }
 
-fn mesh_from_vi(device: &wgpu::Device, vertices: &[Vertex], indices: &[u16]) -> Mesh {
+fn mesh_from_vi<T: Vertex>(device: &wgpu::Device, vertices: &[T], indices: &[u16]) -> Mesh {
     let bytes_1: &[u8] = &vertices_to_bytes(vertices);
     let bytes_2: &[u8] = &indices_to_bytes(&indices);
     let bytes_merged: &[u8] = &[bytes_1, bytes_2].concat();
@@ -113,23 +70,23 @@ fn mesh_from_vi(device: &wgpu::Device, vertices: &[Vertex], indices: &[u16]) -> 
 }
 
 pub fn make_quad(device: &wgpu::Device, size: f32) -> Mesh {
-    let vertices: [Vertex; 4] = [
-        Vertex::new(
+    let vertices: [FullVertex; 4] = [
+        FullVertex::new(
             Vec3::new(-size, -size, 0.0),
             Vec4::new(1.0, 0.0, 0.0, 1.0),
             Vec2::new(0.0, 0.0),
         ),
-        Vertex::new(
+        FullVertex::new(
             Vec3::new(size, -size, 0.0),
             Vec4::new(0.0, 1.0, 1.0, 1.0),
             Vec2::new(1.0, 0.0),
         ),
-        Vertex::new(
+        FullVertex::new(
             Vec3::new(size, size, 0.0),
             Vec4::new(0.0, 0.0, 1.0, 1.0),
             Vec2::new(1.0, 1.0),
         ),
-        Vertex::new(
+        FullVertex::new(
             Vec3::new(-size, size, 0.0),
             Vec4::new(1.0, 0.0, 1.0, 1.0),
             Vec2::new(0.0, 1.0),
@@ -156,7 +113,7 @@ pub fn make_n_gon(device: &wgpu::Device, n: usize) -> Mesh {
             let b = (a * 0.5).sin() * 0.5 + 0.5;
             let color = Vec4::new(r, g, b, 1.0);
             let tx = Vec2::new(x, y);
-            Vertex::new(pos, color, tx)
+            FullVertex::new(pos, color, tx)
         })
         .collect::<Vec<_>>();
 
@@ -180,14 +137,14 @@ pub fn make_cube(device: &wgpu::Device, color: Vec4) -> Mesh {
     let y = 0.5;
     let z = 0.5;
     let vertices = vec![
-        Vertex::new(Vec3::new(-x, -y, -z), color, Vec2::new(0.0, 0.0)),
-        Vertex::new(Vec3::new(x, -y, -z), color, Vec2::new(1.0, 0.0)),
-        Vertex::new(Vec3::new(x, y, -z), color, Vec2::new(1.0, 1.0)),
-        Vertex::new(Vec3::new(-x, y, -z), color, Vec2::new(0.0, 1.0)),
-        Vertex::new(Vec3::new(-x, -y, z), color, Vec2::new(0.0, 0.0)),
-        Vertex::new(Vec3::new(x, -y, z), color, Vec2::new(1.0, 0.0)),
-        Vertex::new(Vec3::new(x, y, z), color, Vec2::new(1.0, 1.0)),
-        Vertex::new(Vec3::new(-x, y, z), color, Vec2::new(0.0, 1.0)),
+        FullVertex::new(Vec3::new(-x, -y, -z), color, Vec2::new(0.0, 0.0)),
+        FullVertex::new(Vec3::new(x, -y, -z), color, Vec2::new(1.0, 0.0)),
+        FullVertex::new(Vec3::new(x, y, -z), color, Vec2::new(1.0, 1.0)),
+        FullVertex::new(Vec3::new(-x, y, -z), color, Vec2::new(0.0, 1.0)),
+        FullVertex::new(Vec3::new(-x, -y, z), color, Vec2::new(0.0, 0.0)),
+        FullVertex::new(Vec3::new(x, -y, z), color, Vec2::new(1.0, 0.0)),
+        FullVertex::new(Vec3::new(x, y, z), color, Vec2::new(1.0, 1.0)),
+        FullVertex::new(Vec3::new(-x, y, z), color, Vec2::new(0.0, 1.0)),
     ];
 
     let indices = [
@@ -206,23 +163,23 @@ pub fn make_cube(device: &wgpu::Device, color: Vec4) -> Mesh {
 pub fn make_tetrahedron(device: &wgpu::Device) -> Mesh {
     let inv_rt2 = 1.0 / 2.0f32.sqrt();
 
-    let mut vertices = vec![
-        Vertex::new(
+    let vertices = vec![
+        FullVertex::new(
             Vec3::new(1.0, -inv_rt2, 0.0),
             Vec4::new(1.0, 0.0, 0.0, 1.0),
             Vec2::new(0.0, 0.0),
         ),
-        Vertex::new(
+        FullVertex::new(
             Vec3::new(-1.0, -inv_rt2, 0.0),
             Vec4::new(0.0, 1.0, 0.0, 1.0),
             Vec2::new(0.0, 0.0),
         ),
-        Vertex::new(
+        FullVertex::new(
             Vec3::new(0.0, inv_rt2, 1.0),
             Vec4::new(0.0, 0.0, 1.0, 1.0),
             Vec2::new(0.0, 0.0),
         ),
-        Vertex::new(
+        FullVertex::new(
             Vec3::new(0.0, inv_rt2, -1.0),
             Vec4::new(1.0, 0.0, 1.0, 1.0),
             Vec2::new(0.0, 0.0),
@@ -232,41 +189,44 @@ pub fn make_tetrahedron(device: &wgpu::Device) -> Mesh {
     #[rustfmt::skip]
     let indices = vec![
         2, 1, 0,
-        3, 2, 1,
-        3, 1, 0,
-        0, 2, 3,
+        1, 2, 3,
+        0, 1, 3,
+        3, 2, 0,
     ];
 
     mesh_from_vi(device, &vertices, &indices)
 }
 
-pub fn make_rough_ground_plane(device: &wgpu::Device) -> Mesh {
+pub fn make_rough_ground_plane(device: &wgpu::Device, center: Vec2, n_quads: u16) -> Mesh {
     let mut vertices = Vec::new();
     let mut indices = Vec::new();
 
-    let n_quads_x = 100;
-    let n_quads_y = 100;
+    let n_quads_x = n_quads;
+    let n_quads_y = n_quads;
+
+    let world_width = 100.0;
+    let quad_width_x = world_width / n_quads_x as f32;
+    let quad_width_y = world_width / n_quads_y as f32;
 
     let perlin = Perlin::new(1);
 
     let eval_height = |x: f32, z: f32| {
-        // let dsq = x.powi(2) + z.powi(2);
-        // return -100.0 / (0.1 * dsq + 1.0);
         let y1 = perlin.get([x as f64 / 5.0 + 0.5, 0.5, z as f64 / 5.0 + 0.5]);
         let y2 = perlin.get([x as f64 + 0.5, 0.5, z as f64 + 0.5]) * 0.4;
         let y3 = perlin.get([x as f64 / 18.0, 0.5, z as f64 / 18.0 + 0.5]) * 3.0;
-        return y1 + y2 + y3;
+        let y4 = perlin.get([x as f64 / 120.0, 0.5, z as f64 / 120.0 + 0.5]) * 17.0;
+        return y1 + y2 + y3 + y4
     };
 
     for xi in 0..=n_quads_x {
         for zi in 0..=n_quads_y {
-            let x = xi as f32 - 50.0;
-            let z = zi as f32 - 50.0;
-            let y = eval_height(x, z);
+            let x = xi as f32 * quad_width_x - world_width / 2.0;
+            let z = zi as f32 * quad_width_y - world_width / 2.0;
+            let y = eval_height(center.x + x, center.y + z);
             let position = Vec3::new(x as f32, y as f32, z as f32);
-            let color = Vec4::new(0.3, 0.8, 0.2, 1.0);
+            let color = Vec4::new(0.3, 1.0, 0.2, 1.0);
             let tex_coord = Vec2::new(0.0, 0.0);
-            let v = Vertex::new(position, color, tex_coord);
+            let v = FullVertex::new(position, color, tex_coord);
             vertices.push(v);
         }
     }

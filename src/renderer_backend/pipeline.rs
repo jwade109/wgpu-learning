@@ -1,7 +1,6 @@
-use crate::renderer_backend::{mesh::Vertex, Shader, Texture};
+use crate::renderer_backend::{FullVertex, Shader, Texture, Vertex};
 
 pub struct PipelineBuilder<'a> {
-    vertex_buffer_layouts: Vec<wgpu::VertexBufferLayout<'static>>,
     bind_group_layouts: Vec<&'a wgpu::BindGroupLayout>,
     device: &'a wgpu::Device,
     draw_wireframes: bool,
@@ -18,7 +17,6 @@ fn make_shader_module(device: &wgpu::Device, shader: &Shader, label: &str) -> wg
 impl<'a> PipelineBuilder<'a> {
     pub fn new(device: &'a wgpu::Device) -> Self {
         Self {
-            vertex_buffer_layouts: Vec::new(),
             bind_group_layouts: Vec::new(),
             device: device,
             draw_wireframes: false,
@@ -33,15 +31,15 @@ impl<'a> PipelineBuilder<'a> {
         self.draw_wireframes = true;
     }
 
-    pub fn build_pipeline(
-        mut self,
+    pub fn build_pipeline<T: Vertex>(
+        self,
         label: &str,
         shader: &Shader,
         pixel_format: wgpu::TextureFormat,
         has_depth_stencil: bool,
         cull_backface: bool,
     ) -> wgpu::RenderPipeline {
-        self.vertex_buffer_layouts.push(Vertex::get_layout());
+        let vertex_buffer_layouts = vec![T::get_layout()];
 
         let shader_module = make_shader_module(&self.device, shader, "Shader Module");
 
@@ -72,7 +70,7 @@ impl<'a> PipelineBuilder<'a> {
             vertex: wgpu::VertexState {
                 module: &shader_module,
                 entry_point: Some(&shader.vertex_entry),
-                buffers: &self.vertex_buffer_layouts,
+                buffers: &vertex_buffer_layouts,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
 

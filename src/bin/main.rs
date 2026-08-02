@@ -28,13 +28,11 @@ fn make_world() -> World {
         should_animate: false,
     });
 
-    world.quads.push(Object {
-        position: Vec3::new(0.0, 0.0, 0.0),
-        angle: 0.0,
-        vel: 0.0,
-        kind: EntityKind::Mesh(MeshType::GroundPlane),
-        should_animate: false,
-    });
+    for x in [-100, 0, 100] {
+        for y in [-100, 0, 100] {
+            world.ground_plane(x, y);
+        }
+    }
 
     for i in 0..20 {
         let a = i as f32 / 5.0;
@@ -100,7 +98,7 @@ fn make_world() -> World {
         let y = y * (size + pad) + pad;
         let w = w * size + (w - 1) * pad;
         let h = h * size + (h - 1) * pad;
-        world.ui(x, y, w, h);
+        // world.ui(x, y, w, h);
     }
 
     world
