@@ -49,5 +49,12 @@ fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
     c.y = pow(c.y, 2.0);
     c.z = pow(c.z, 2.0);
 
-    return vec4<f32>(step(0.6, length(c.xyz)));
+    let l = length(c.xyz);
+
+    // for debug: highlight the background
+    // if l < 0.3 {
+    //     return vec4<f32>(1.0, 0.4, 0.4, 0.4);
+    // }
+
+    return vec4<f32>(1.0, 1.0, 1.0, smoothstep(0.38, 0.43, l));
 }

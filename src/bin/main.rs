@@ -11,7 +11,7 @@ fn make_world(renderer: &mut Renderer) -> World {
     let nine_gon_id = renderer.spawn_mesh(make_n_gon(&renderer.device, 9));
 
     let fun_id = renderer.load_texture("img/invincible.jpg");
-    let font_id = renderer.load_texture("img/font.png");
+    let font_id = renderer.load_texture("fonts/consolas/font.png");
 
     let mut world = World::new();
 
@@ -75,56 +75,26 @@ fn make_world(renderer: &mut Renderer) -> World {
         });
     }
 
-    for (i, (x, y, w, h)) in [
-        (0, 0, 1, 1),
-        (1, 0, 1, 1),
-        (2, 0, 1, 1),
-        // y = 1
-        (1, 1, 2, 2),
-        (3, 1, 2, 1),
-        (5, 1, 3, 1),
-        (8, 1, 1, 1),
-        // y = 2
-        (3, 2, 1, 1),
-        (4, 2, 1, 3),
-        (5, 2, 2, 1),
-        (7, 2, 1, 1),
-        // y = 3
-        (1, 3, 1, 1),
-        (2, 3, 1, 1),
-        (3, 3, 1, 1),
-        (5, 3, 1, 1),
-        (6, 3, 1, 1),
-        (7, 3, 1, 1),
-        // y = 4
-        (3, 4, 1, 1),
-        (5, 4, 2, 1),
-        // y = 6
-        (6, 6, 2, 2),
-        // y = 7
-        (2, 7, 1, 1),
-        (3, 7, 1, 1),
-        (4, 7, 2, 1),
-        (8, 7, 3, 1),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let msg = "willyoumarryme?";
-        let ch = msg.chars().nth(i % msg.len()).unwrap();
+    let mut x_origin = 100;
+    let mut y_origin = 200;
+    let scale = 2;
 
-        let size = 150;
-        let pad = 5;
-        let x = x * (size + pad) + pad;
-        let y = y * (size + pad) + pad;
-        let w = w * size + (w - 1) * pad;
-        let h = h * size + (h - 1) * pad;
-        let t = match i % 6 {
-            // 0 => TextureOrChar::Texture(fun_id),
-            // 1 => TextureOrChar::Color,
-            _ => TextureOrChar::Char(font_id, ch),
-        };
-        world.ui(x, y, w, h, t);
+    for (i, (ch, data)) in renderer.font.characters.iter().enumerate() {
+        let w = data.width * scale;
+        let h = data.height * scale;
+        let t = TextureOrChar::Char(font_id, *ch);
+
+        let x = x_origin - data.origin_x * scale as i32;
+        let y = y_origin - data.origin_y * scale as i32;
+
+        world.ui(x, y, w as i32, h as i32, t);
+
+        x_origin += data.advance * scale as i32;
+
+        if i % 20 == 0 && i > 0 {
+            y_origin += (100 * scale) as i32;
+            x_origin = 100;
+        }
     }
 
     world

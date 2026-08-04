@@ -29,7 +29,7 @@ pub struct Renderer<'a> {
     single_color_pipeline: SingleColorPipeline,
     single_texture_pipeline: SingleTexturePipeline,
 
-    font: FontInfo,
+    pub font: FontInfo,
 
     meshes: HashMap<usize, Mesh>,
     textures: HashMap<usize, SpriteMaterial>,
@@ -164,7 +164,7 @@ impl<'a> Renderer<'a> {
 
         let single_texture_pipeline = SingleTexturePipeline::new(&device, &config);
 
-        let font = FontInfo::from_file("img/font_data.json").unwrap();
+        let font = FontInfo::from_file("fonts/consolas/font_data.json").unwrap();
 
         Self {
             paused: false,
@@ -216,6 +216,10 @@ impl<'a> Renderer<'a> {
         self.next_resource_id += 1;
         self.textures.insert(id, sprite);
         id
+    }
+
+    pub fn get_font(&self, id: usize) -> &FontInfo {
+        &self.font
     }
 
     pub fn spawn_ground_plane(&mut self, x: i32, z: i32, n_quads: u16) -> usize {
@@ -436,9 +440,7 @@ impl<'a> Renderer<'a> {
                 }
                 PipelineSelector::World3d => {
                     self.draw_3d(&mut renderpass, &world);
-                    if !self.draw_wireframes {
-                        self.draw_ui(&mut renderpass, &world);
-                    }
+                    self.draw_ui(&mut renderpass, &world);
                 }
             }
         }

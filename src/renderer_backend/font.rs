@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct CodePointInfo {
@@ -22,7 +22,7 @@ pub struct FontInfo {
     pub italic: bool,
     pub width: u32,
     pub height: u32,
-    pub characters: HashMap<char, CodePointInfo>,
+    pub characters: BTreeMap<char, CodePointInfo>,
 }
 
 impl FontInfo {
