@@ -20,16 +20,34 @@ pub struct UBO<T> {
 }
 
 impl<T> UBO<T> {
-    pub fn new(device: &wgpu::Device, object_count: usize, layout: wgpu::BindGroupLayout) -> Self {
-        let alignment = glm::max(
-            device.limits().min_storage_buffer_offset_alignment as u32,
-            std::mem::size_of::<T>() as u32,
-        ) as u64;
+    pub fn new(
+        device: &wgpu::Device,
+        object_count: usize,
+        layout: wgpu::BindGroupLayout,
+        label: &str,
+    ) -> Self {
+        let min_alignment = device.limits().min_storage_buffer_offset_alignment as u64;
+        let max_buffer_size = device.limits().max_uniform_buffer_binding_size as u64;
+        let size_of_t = std::mem::size_of::<T>() as u64;
+        let n_elements = max_buffer_size / size_of_t;
 
-        println!("Alignment is {alignment}");
+        let alignment = min_alignment.max(size_of_t);
+
+        let n_actual_elements = max_buffer_size / alignment;
+
+        let name = std::any::type_name::<T>();
+
+        println!("Label:             {label}");
+        println!("Type:              {name}");
+        println!("Size of T:         {size_of_t}");
+        println!("Min alignment:     {min_alignment}");
+        println!("Max buffer size:   {max_buffer_size}");
+        println!("Optimal storage:   {n_elements}");
+        println!("Actual storage:    {n_actual_elements}");
+        println!("Requested storage: {object_count}\n");
 
         let buffer_descriptor = wgpu::BufferDescriptor {
-            label: Some("UBO"),
+            label: Some(label),
             size: object_count as u64 * alignment,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
@@ -42,7 +60,7 @@ impl<T> UBO<T> {
             let mut builder = BindGroupBuilder::new(device);
             builder.set_layout(&layout);
             builder.add_buffer(&buffer, i as u64 * alignment);
-            bind_groups.push(builder.build("Matrix"));
+            bind_groups.push(builder.build(label));
         }
 
         Self {

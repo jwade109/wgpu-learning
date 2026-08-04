@@ -13,10 +13,6 @@ impl<'a> BindGroupBuilder<'a> {
         }
     }
 
-    fn reset(&mut self) {
-        self.entries.clear();
-    }
-
     pub fn set_layout(&mut self, layout: &'a wgpu::BindGroupLayout) {
         self.layout = Some(layout);
     }
@@ -44,14 +40,12 @@ impl<'a> BindGroupBuilder<'a> {
         })
     }
 
-    pub fn build(&mut self, label: &str) -> wgpu::BindGroup {
+    pub fn build(self, label: &str) -> wgpu::BindGroup {
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: self.layout.unwrap(),
             entries: &self.entries,
             label: Some(label),
         });
-
-        self.reset();
 
         bind_group
     }

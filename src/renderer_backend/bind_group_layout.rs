@@ -11,10 +11,6 @@ impl<'a> BindGroupLayoutBuilder<'a> {
         }
     }
 
-    fn reset(&mut self) {
-        self.entries.clear();
-    }
-
     pub fn add_material(&mut self) {
         self.entries.push(wgpu::BindGroupLayoutEntry {
             binding: self.entries.len() as u32,
@@ -48,15 +44,13 @@ impl<'a> BindGroupLayoutBuilder<'a> {
         });
     }
 
-    pub fn build(&mut self, label: &str) -> wgpu::BindGroupLayout {
+    pub fn build(self, label: &str) -> wgpu::BindGroupLayout {
         let layout = self
             .device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &self.entries,
                 label: Some(label),
             });
-
-        self.reset();
 
         layout
     }

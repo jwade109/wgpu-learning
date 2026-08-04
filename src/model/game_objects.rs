@@ -6,6 +6,30 @@ use crate::{
 };
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub enum TextureOrChar {
+    Texture(usize),
+    Char(usize, char),
+    Color,
+}
+
+impl TextureOrChar {
+    pub fn id(&self) -> Option<usize> {
+        match self {
+            TextureOrChar::Char(id, _) => Some(*id),
+            TextureOrChar::Texture(id) => Some(*id),
+            _ => None,
+        }
+    }
+
+    pub fn char(&self) -> Option<char> {
+        match self {
+            TextureOrChar::Char(_, c) => Some(*c),
+            _ => None,
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub enum EntityKind {
     Mesh,
     ScreenRect {
@@ -13,7 +37,7 @@ pub enum EntityKind {
         y: i32,
         width: i32,
         height: i32,
-        texture_id: usize,
+        tex_or_char: TextureOrChar,
     },
 }
 
@@ -62,7 +86,7 @@ impl World {
         });
     }
 
-    pub fn ui(&mut self, x: i32, y: i32, w: i32, h: i32, texture_id: usize) {
+    pub fn ui(&mut self, x: i32, y: i32, w: i32, h: i32, tex_or_char: TextureOrChar) {
         self.quads.push(Object {
             position: Vec3::new(5.0, 5.0, 5.0),
             angle: 0.0,
@@ -72,7 +96,7 @@ impl World {
                 y,
                 width: w,
                 height: h,
-                texture_id,
+                tex_or_char,
             },
             should_animate: true,
             mesh_id: 0,

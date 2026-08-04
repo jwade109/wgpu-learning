@@ -30,7 +30,12 @@ impl LavaLampPipeline {
             true,
         );
 
-        let camera_ubo = UBO::new(&device, 250, camera_projection_bind_group_layout);
+        let camera_ubo = UBO::new(
+            &device,
+            250,
+            camera_projection_bind_group_layout,
+            "Lava lamp camera UBO",
+        );
 
         Self {
             pipeline,

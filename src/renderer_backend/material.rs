@@ -1,6 +1,7 @@
-use crate::renderer_backend::bind_group::BindGroupBuilder;
+use crate::renderer_backend::{bind_group::BindGroupBuilder, TextureSampleRange};
 
 pub struct SpriteMaterial {
+    size: (u32, u32),
     bind_group: wgpu::BindGroup,
 }
 
@@ -58,12 +59,12 @@ impl SpriteMaterial {
 
         // Make a sampler
         let sampler_descriptor = wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            address_mode_w: wgpu::AddressMode::Repeat,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         };
         let sampler = device.create_sampler(&sampler_descriptor);
@@ -74,10 +75,21 @@ impl SpriteMaterial {
         builder.add_material(&view, &sampler);
         let bind_group = builder.build(label);
 
-        SpriteMaterial { bind_group }
+        SpriteMaterial { size, bind_group }
     }
 
     pub fn bind_group(&self) -> &wgpu::BindGroup {
         &self.bind_group
+    }
+
+    pub fn get_sample_range(&self) -> TextureSampleRange {
+        TextureSampleRange {
+            origin_x: 0,
+            origin_y: 0,
+            sample_width: self.size.0,
+            sample_height: self.size.1,
+            image_width: self.size.0,
+            image_height: self.size.1,
+        }
     }
 }

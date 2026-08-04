@@ -7,19 +7,16 @@ pub struct SingleColorPipeline {
     color_ubo: UBO<glm::Vec4>,
 }
 
+fn make_ubo_layout(device: &Device, label: &str) -> BindGroupLayout {
+    let mut builder = BindGroupLayoutBuilder::new(&device);
+    builder.add_ubo();
+    builder.build(label)
+}
+
 impl SingleColorPipeline {
     pub fn new(device: &Device, config: &SurfaceConfiguration) -> Self {
-        let transforms_ubo_bind_group_layout = {
-            let mut builder = BindGroupLayoutBuilder::new(&device);
-            builder.add_ubo();
-            builder.build("Shader Params")
-        };
-
-        let color_ubo_bind_group_layout = {
-            let mut builder = BindGroupLayoutBuilder::new(&device);
-            builder.add_ubo();
-            builder.build("Shader Params")
-        };
+        let transforms_ubo_bind_group_layout = make_ubo_layout(device, "Shader Params");
+        let color_ubo_bind_group_layout = make_ubo_layout(device, "Shader Params");
 
         let mut builder = PipelineBuilder::new(&device);
         let shader = Shader::from_path("src/shaders/single_color.wgsl");
@@ -33,8 +30,18 @@ impl SingleColorPipeline {
             true,
         );
 
-        let transforms_ubo = UBO::new(&device, 250, transforms_ubo_bind_group_layout);
-        let color_ubo = UBO::new(&device, 250, color_ubo_bind_group_layout);
+        let transforms_ubo = UBO::new(
+            &device,
+            250,
+            transforms_ubo_bind_group_layout,
+            "Single color pipeline transforms UBO",
+        );
+        let color_ubo = UBO::new(
+            &device,
+            250,
+            color_ubo_bind_group_layout,
+            "Single color pipeline color UBO",
+        );
 
         Self {
             pipeline,

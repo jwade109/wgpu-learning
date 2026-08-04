@@ -14,6 +14,14 @@ fn make_world(renderer: &mut Renderer) -> World {
     let font_id = renderer.load_texture("img/font.png");
 
     let mut world = World::new();
+
+    for x in [-100, 0, 100] {
+        for z in [-100, 0, 100] {
+            let id = renderer.spawn_ground_plane(x, z, 100);
+            world.ground_plane(x, z, id);
+        }
+    }
+
     world.quads.push(Object {
         position: Vec3::new(0.0, 6.0, -9.0),
         angle: 0.0,
@@ -38,13 +46,6 @@ fn make_world(renderer: &mut Renderer) -> World {
         should_animate: false,
         mesh_id: tetra_id,
     });
-
-    for x in [-100, 0, 100] {
-        for z in [-100, 0, 100] {
-            let id = renderer.spawn_ground_plane(x, z, 100);
-            world.ground_plane(x, z, id);
-        }
-    }
 
     for i in 0..20 {
         let a = i as f32 / 5.0;
@@ -109,13 +110,20 @@ fn make_world(renderer: &mut Renderer) -> World {
     .into_iter()
     .enumerate()
     {
+        let msg = "willyoumarryme?";
+        let ch = msg.chars().nth(i % msg.len()).unwrap();
+
         let size = 150;
-        let pad = 10;
+        let pad = 5;
         let x = x * (size + pad) + pad;
         let y = y * (size + pad) + pad;
         let w = w * size + (w - 1) * pad;
         let h = h * size + (h - 1) * pad;
-        let t = if i % 2 == 0 { fun_id } else { font_id };
+        let t = match i % 6 {
+            // 0 => TextureOrChar::Texture(fun_id),
+            // 1 => TextureOrChar::Color,
+            _ => TextureOrChar::Char(font_id, ch),
+        };
         world.ui(x, y, w, h, t);
     }
 

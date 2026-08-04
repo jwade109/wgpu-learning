@@ -63,7 +63,12 @@ impl Standard3DPipeline {
             )
         };
 
-        let camera_ubo = UBO::new(&device, 1, camera_projection_bind_group_layout);
+        let camera_ubo = UBO::new(
+            &device,
+            1,
+            camera_projection_bind_group_layout,
+            "Standard 3D pipeline camera UBO",
+        );
 
         let light_source: [f32; 3] = [4.0, 3.0, 5.0];
 
@@ -86,7 +91,12 @@ impl Standard3DPipeline {
             builder.build("UBO Bind Group Layout")
         };
 
-        let transforms_ubo = UBO::new(&device, 250, ubo_bind_group_layout);
+        let transforms_ubo = UBO::new(
+            &device,
+            250,
+            ubo_bind_group_layout,
+            "Standard 3D pipeline transforms UBO",
+        );
 
         Self {
             standard,

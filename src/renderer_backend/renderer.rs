@@ -29,6 +29,8 @@ pub struct Renderer<'a> {
     single_color_pipeline: SingleColorPipeline,
     single_texture_pipeline: SingleTexturePipeline,
 
+    font: FontInfo,
+
     meshes: HashMap<usize, Mesh>,
     textures: HashMap<usize, SpriteMaterial>,
     next_resource_id: usize,
@@ -153,22 +155,6 @@ impl<'a> Renderer<'a> {
 
         let single_color_pipeline = SingleColorPipeline::new(&device, &config);
 
-        let fun_quad_material = SpriteMaterial::new(
-            "img/invincible.jpg",
-            &device,
-            &queue,
-            "Quad Material",
-            &material_bind_group_layout,
-        );
-
-        let font_material = SpriteMaterial::new(
-            "img/font.png",
-            &device,
-            &queue,
-            "Quad Material",
-            &material_bind_group_layout,
-        );
-
         let uniform_bind_group = {
             let mut builder = BindGroupBuilder::new(&device);
             builder.set_layout(&time_etc_data_bind_group);
@@ -177,6 +163,8 @@ impl<'a> Renderer<'a> {
         };
 
         let single_texture_pipeline = SingleTexturePipeline::new(&device, &config);
+
+        let font = FontInfo::from_file("img/font_data.json").unwrap();
 
         Self {
             paused: false,
@@ -188,6 +176,7 @@ impl<'a> Renderer<'a> {
             queue,
             config,
             size,
+            font,
             lava_lamp_pipeline,
             map_pipeline,
             standard_3d_pipeline,
@@ -296,12 +285,16 @@ impl<'a> Renderer<'a> {
         let (sx, sy) = self.window.get_size();
 
         for (i, obj) in world.quads.iter().enumerate() {
+            if i >= 250 {
+                break;
+            }
+
             let EntityKind::ScreenRect {
                 x,
                 y,
                 width,
                 height,
-                texture_id,
+                tex_or_char,
             } = obj.kind
             else {
                 continue;
@@ -312,23 +305,35 @@ impl<'a> Renderer<'a> {
 
             let xoff = 2.0 * (x as f32 + width as f32 / 2.0) / sx as f32 - 1.0;
             let yoff = -(2.0 * (y as f32 + height as f32 / 2.0) / sy as f32 - 1.0);
-            let transform = mat4_diagonal(1.0, 1.0, 1.0, 1.0)
-                * translation_matrix(Vec3::new(xoff, yoff, 0.0))
+            let transform = translation_matrix(Vec3::new(xoff, yoff, 0.0))
                 * mat4_diagonal(width_scale, height_scale, 1.0, 1.0);
 
-            let material = self.textures.get(&texture_id).unwrap();
-
-            self.single_texture_pipeline.draw(
-                rp,
-                mesh,
-                material,
-                &transform,
-                &self.queue,
-                i as u64,
-            );
-
-            if i >= 250 {
-                break;
+            if let Some(id) = tex_or_char.id() {
+                let material = self.textures.get(&id).unwrap();
+                let range = if let Some(c) = tex_or_char.char() {
+                    self.font.get_sample_range(c).unwrap()
+                } else {
+                    material.get_sample_range()
+                };
+                self.single_texture_pipeline.draw(
+                    rp,
+                    mesh,
+                    material,
+                    &transform,
+                    &self.queue,
+                    &range,
+                    i as u64,
+                );
+            } else {
+                self.single_color_pipeline.draw(
+                    rp,
+                    mesh,
+                    // material,
+                    &transform,
+                    &Vec4::new(1.0, 0.0, 0.0, 1.0),
+                    &self.queue,
+                    i as u64,
+                );
             }
         }
     }

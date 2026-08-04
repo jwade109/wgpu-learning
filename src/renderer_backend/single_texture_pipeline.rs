@@ -4,6 +4,7 @@ use wgpu::*;
 pub struct SingleTexturePipeline {
     pipeline: RenderPipeline,
     transforms_ubo: UBO<glm::Mat4>,
+    info_ubo: UBO<TextureSampleRange>,
 }
 
 impl SingleTexturePipeline {
@@ -12,6 +13,12 @@ impl SingleTexturePipeline {
             let mut builder = BindGroupLayoutBuilder::new(&device);
             builder.add_ubo();
             builder.build("Transforms")
+        };
+
+        let sample_info_ubo_bind_group_layout = {
+            let mut builder = BindGroupLayoutBuilder::new(&device);
+            builder.add_ubo();
+            builder.build("Sample Info")
         };
 
         let material_bind_group_layout;
@@ -25,6 +32,7 @@ impl SingleTexturePipeline {
         let shader = Shader::from_path("src/shaders/single_texture.wgsl");
         builder.add_bind_group_layout(&transforms_ubo_bind_group_layout);
         builder.add_bind_group_layout(&material_bind_group_layout);
+        builder.add_bind_group_layout(&sample_info_ubo_bind_group_layout);
         let pipeline = builder.build_pipeline::<FullVertex>(
             "Single Texture Pipeline",
             &shader,
@@ -33,11 +41,23 @@ impl SingleTexturePipeline {
             true,
         );
 
-        let transforms_ubo = UBO::new(&device, 250, transforms_ubo_bind_group_layout);
+        let transforms_ubo = UBO::new(
+            &device,
+            250,
+            transforms_ubo_bind_group_layout,
+            "Texture pipeline transforms UBO",
+        );
+        let info_ubo = UBO::new(
+            device,
+            250,
+            sample_info_ubo_bind_group_layout,
+            "Texture pipeline sample range UBO",
+        );
 
         Self {
             pipeline,
             transforms_ubo,
+            info_ubo,
         }
     }
 
@@ -48,12 +68,15 @@ impl SingleTexturePipeline {
         material: &SpriteMaterial,
         transform: &glm::Mat4,
         queue: &Queue,
+        range: &TextureSampleRange,
         i: u64,
     ) {
+        self.info_ubo.upload(i, &range, queue);
         rp.set_pipeline(&self.pipeline);
         self.transforms_ubo.upload(i, transform, queue);
         rp.set_bind_group(0, self.transforms_ubo.bind_group(i as usize), &[]);
         rp.set_bind_group(1, material.bind_group(), &[]);
+        rp.set_bind_group(2, self.info_ubo.bind_group(i as usize), &[]);
         draw_mesh(rp, mesh);
     }
 }
