@@ -11,7 +11,11 @@ fn make_world(renderer: &mut Renderer) -> World {
     let nine_gon_id = renderer.spawn_mesh(make_n_gon(&renderer.device, 9));
 
     let fun_id = renderer.load_texture("img/invincible.jpg");
-    let font_id = renderer.load_texture("fonts/consolas/font.png");
+
+    let font_id = renderer.load_font("cambria");
+    let font_id = renderer.load_font("consolas");
+    let font_id = renderer.load_font("garamond");
+    let font_id = renderer.load_font("arial");
 
     let mut world = World::new();
 
@@ -77,22 +81,37 @@ fn make_world(renderer: &mut Renderer) -> World {
 
     let mut x_origin = 100;
     let mut y_origin = 200;
-    let scale = 2;
+    let scale = 0.7;
 
-    for (i, (ch, data)) in renderer.font.characters.iter().enumerate() {
-        let w = data.width * scale;
-        let h = data.height * scale;
-        let t = TextureOrChar::Char(font_id, *ch);
+    let (font, _) = renderer.fonts.get(&font_id).unwrap();
 
-        let x = x_origin - data.origin_x * scale as i32;
-        let y = y_origin - data.origin_y * scale as i32;
+    let text = "Lorem Ipsum is simply dummy text of the printing and typesetting \
+        industry. Lorem Ipsum has been the industry's standard dummy text ever since 1966, \
+        when designers at Letraset and James Mosley, the librarian at St Bride Printing Library \
+        in London, took a 1914 Cicero translation and scrambled it to make dummy text for \
+        Letraset's Body Type sheets. It has survived not only many decades, but also the \
+        leap into electronic typesetting, remaining essentially unchanged. \
+        It was popularised thanks to these sheets and more recently with desktop publishing \
+        software like Aldus PageMaker and Microsoft Word including versions of Lorem Ipsum.";
 
-        world.ui(x, y, w as i32, h as i32, t);
+    for (i, ch) in text.char_indices() {
 
-        x_origin += data.advance * scale as i32;
+        let Some(data) = font.characters.get(&ch) else {
+            continue;
+        };
 
-        if i % 20 == 0 && i > 0 {
-            y_origin += (100 * scale) as i32;
+        let w = data.width as f32 * scale;
+        let h = data.height as f32 * scale;
+
+        let x = x_origin - (data.origin_x as f32 * scale).round() as i32;
+        let y = y_origin - (data.origin_y as f32 * scale).round() as i32;
+
+        world.ui(x, y, w.round() as i32, h.round() as i32, ch, font_id);
+
+        x_origin += (data.advance as f32 * scale).round() as i32;
+
+        if i % 60 == 0 && i > 0 {
+            y_origin += (100 as f32 * scale) as i32;
             x_origin = 100;
         }
     }

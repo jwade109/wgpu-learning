@@ -1,4 +1,6 @@
-use crate::renderer_backend::{bind_group::BindGroupBuilder, TextureSampleRange};
+use crate::renderer_backend::{
+    bind_group::BindGroupBuilder, BindGroupLayoutBuilder, TextureSampleRange,
+};
 
 pub struct SpriteMaterial {
     size: (u32, u32),
@@ -6,6 +8,16 @@ pub struct SpriteMaterial {
 }
 
 impl SpriteMaterial {
+    pub fn load(filename: &str, device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        let bind_group_layout = {
+            let mut builder = BindGroupLayoutBuilder::new(&device);
+            builder.add_material();
+            builder.build(filename)
+        };
+
+        SpriteMaterial::new(filename, device, queue, filename, &bind_group_layout)
+    }
+
     pub fn new(
         filename: &str,
         device: &wgpu::Device,

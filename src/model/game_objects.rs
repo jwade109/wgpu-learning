@@ -60,9 +60,19 @@ impl Object {
     }
 }
 
+pub struct ScreenText {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub c: char,
+    pub font: usize,
+}
+
 pub struct World {
     pub time: f32,
     pub quads: Vec<Object>,
+    pub text: Vec<ScreenText>,
     pub camera: Camera,
 }
 
@@ -71,6 +81,7 @@ impl World {
         World {
             time: 0.0,
             quads: Vec::new(),
+            text: Vec::new(),
             camera: Camera::new(),
         }
     }
@@ -86,20 +97,14 @@ impl World {
         });
     }
 
-    pub fn ui(&mut self, x: i32, y: i32, w: i32, h: i32, tex_or_char: TextureOrChar) {
-        self.quads.push(Object {
-            position: Vec3::new(5.0, 5.0, 5.0),
-            angle: 0.0,
-            vel: 1.0,
-            kind: EntityKind::ScreenRect {
-                x,
-                y,
-                width: w,
-                height: h,
-                tex_or_char,
-            },
-            should_animate: true,
-            mesh_id: 0,
+    pub fn ui(&mut self, x: i32, y: i32, w: i32, h: i32, c: char, font: usize) {
+        self.text.push(ScreenText {
+            x,
+            y,
+            width: w,
+            height: h,
+            c,
+            font,
         });
     }
 

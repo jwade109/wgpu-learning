@@ -27,10 +27,9 @@ pub struct Renderer<'a> {
     map_pipeline: wgpu::RenderPipeline,
     standard_3d_pipeline: Standard3DPipeline,
     single_color_pipeline: SingleColorPipeline,
-    single_texture_pipeline: SingleTexturePipeline,
+    text_pipeline: TextPipeline,
 
-    pub font: FontInfo,
-
+    pub fonts: HashMap<usize, (FontInfo, SpriteMaterial)>,
     meshes: HashMap<usize, Mesh>,
     textures: HashMap<usize, SpriteMaterial>,
     next_resource_id: usize,
@@ -60,7 +59,8 @@ impl<'a> Renderer<'a> {
 
         let device_descriptor = wgpu::DeviceDescriptor {
             required_features: wgpu::Features::POLYGON_MODE_LINE
-                | wgpu::Features::POLYGON_MODE_POINT,
+                | wgpu::Features::POLYGON_MODE_POINT
+                | wgpu::Features::BUFFER_BINDING_ARRAY,
             required_limits: wgpu::Limits {
                 max_bind_groups: 8,
                 ..Default::default()
@@ -162,9 +162,7 @@ impl<'a> Renderer<'a> {
             builder.build("uniform buffer")
         };
 
-        let single_texture_pipeline = SingleTexturePipeline::new(&device, &config);
-
-        let font = FontInfo::from_file("fonts/consolas/font_data.json").unwrap();
+        let text_pipeline = TextPipeline::new(&device, &config, &queue);
 
         Self {
             paused: false,
@@ -176,12 +174,12 @@ impl<'a> Renderer<'a> {
             queue,
             config,
             size,
-            font,
             lava_lamp_pipeline,
             map_pipeline,
             standard_3d_pipeline,
             single_color_pipeline,
-            single_texture_pipeline,
+            text_pipeline,
+            fonts: HashMap::new(),
             meshes: HashMap::new(),
             textures: HashMap::new(),
             next_resource_id: 0,
@@ -218,8 +216,15 @@ impl<'a> Renderer<'a> {
         id
     }
 
-    pub fn get_font(&self, id: usize) -> &FontInfo {
-        &self.font
+    pub fn load_font(&mut self, name: &str) -> usize {
+        let data_path = format!("fonts/{name}/font_data.json");
+        let texture_path = format!("fonts/{name}/font.png");
+        let texture = SpriteMaterial::load(&texture_path, &self.device, &self.queue);
+        let font = FontInfo::from_file(&data_path).unwrap();
+        let id = self.next_resource_id;
+        self.next_resource_id += 1;
+        self.fonts.insert(id, (font, texture));
+        id
     }
 
     pub fn spawn_ground_plane(&mut self, x: i32, z: i32, n_quads: u16) -> usize {
@@ -288,58 +293,19 @@ impl<'a> Renderer<'a> {
         let mesh = self.meshes.get(&0).unwrap();
         let (sx, sy) = self.window.get_size();
 
-        for (i, obj) in world.quads.iter().enumerate() {
-            if i >= 250 {
-                break;
-            }
+        let obj = world.text.iter().next().unwrap();
+        let (font, material) = self.fonts.get(&obj.font).unwrap();
 
-            let EntityKind::ScreenRect {
-                x,
-                y,
-                width,
-                height,
-                tex_or_char,
-            } = obj.kind
-            else {
-                continue;
-            };
+        for (i, text) in world.text.iter().enumerate() {
+            let range = font.get_sample_range(text.c).unwrap();
+            let transform = char_transform(text.x, text.y, text.width, text.height, sx, sy);
 
-            let width_scale = width as f32 / sx as f32;
-            let height_scale = height as f32 / sy as f32;
-
-            let xoff = 2.0 * (x as f32 + width as f32 / 2.0) / sx as f32 - 1.0;
-            let yoff = -(2.0 * (y as f32 + height as f32 / 2.0) / sy as f32 - 1.0);
-            let transform = translation_matrix(Vec3::new(xoff, yoff, 0.0))
-                * mat4_diagonal(width_scale, height_scale, 1.0, 1.0);
-
-            if let Some(id) = tex_or_char.id() {
-                let material = self.textures.get(&id).unwrap();
-                let range = if let Some(c) = tex_or_char.char() {
-                    self.font.get_sample_range(c).unwrap()
-                } else {
-                    material.get_sample_range()
-                };
-                self.single_texture_pipeline.draw(
-                    rp,
-                    mesh,
-                    material,
-                    &transform,
-                    &self.queue,
-                    &range,
-                    i as u64,
-                );
-            } else {
-                self.single_color_pipeline.draw(
-                    rp,
-                    mesh,
-                    // material,
-                    &transform,
-                    &Vec4::new(1.0, 0.0, 0.0, 1.0),
-                    &self.queue,
-                    i as u64,
-                );
-            }
+            self.text_pipeline.set_range(&self.queue, i, &range);
+            self.text_pipeline.set_transform(&self.queue, i, &transform);
         }
+
+        self.text_pipeline
+            .draw_text(rp, mesh, material, world.text.len());
     }
 
     fn update_projection(&mut self, world: &World) {

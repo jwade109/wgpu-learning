@@ -1,7 +1,7 @@
 use crate::renderer_backend::bind_group::BindGroupBuilder;
 
 // From: https://stackoverflow.com/questions/28127165/how-to-convert-struct-to-u8
-fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+pub fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
     unsafe {
         ::core::slice::from_raw_parts((p as *const T) as *const u8, ::core::mem::size_of::<T>())
     }
@@ -17,6 +17,7 @@ pub struct UBO<T> {
     bind_groups: Vec<wgpu::BindGroup>,
     alignment: u64,
     _data: std::marker::PhantomData<T>,
+    label: String,
 }
 
 impl<T> UBO<T> {
@@ -26,7 +27,7 @@ impl<T> UBO<T> {
         layout: wgpu::BindGroupLayout,
         label: &str,
     ) -> Self {
-        let min_alignment = device.limits().min_storage_buffer_offset_alignment as u64;
+        let min_alignment = device.limits().min_uniform_buffer_offset_alignment as u64;
         let max_buffer_size = device.limits().max_uniform_buffer_binding_size as u64;
         let size_of_t = std::mem::size_of::<T>() as u64;
         let n_elements = max_buffer_size / size_of_t;
@@ -68,6 +69,7 @@ impl<T> UBO<T> {
             bind_groups,
             alignment,
             _data: std::marker::PhantomData::default(),
+            label: label.to_string(),
         }
     }
 
@@ -77,7 +79,11 @@ impl<T> UBO<T> {
 
     pub fn upload(&mut self, i: u64, matrix: &T, queue: &wgpu::Queue) {
         if i as usize >= self.bind_groups.len() {
-            panic!("Dude");
+            panic!(
+                "Dude: {i} is greater than or equal to {} (UBO {})",
+                self.bind_groups.len(),
+                self.label
+            );
         }
         let offset = i * self.alignment;
         let data: &[u8] = any_as_u8_slice(matrix);

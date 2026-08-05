@@ -1,7 +1,11 @@
-@group(0) @binding(0) var<uniform> transform: mat4x4<f32>;
-@group(1) @binding(0) var the_texture: texture_2d<f32>;
-@group(1) @binding(1) var the_sampler: sampler;
-@group(2) @binding(0) var<uniform> sample_data: SampleInfo;
+// @group(0) @binding(0) var<uniform> transform: mat4x4<f32>;
+@group(0) @binding(0) var the_texture: texture_2d<f32>;
+@group(0) @binding(1) var the_sampler: sampler;
+@group(1) @binding(0) var<uniform> color_array: array<vec4<f32>, MAX_CHARS_PER_PASS>;
+@group(2) @binding(0) var<uniform> sample_info_array: array<SampleInfo, MAX_CHARS_PER_PASS>;
+@group(3) @binding(0) var<uniform> transforms_array: array<mat4x4<f32>, MAX_CHARS_PER_PASS>;
+
+const MAX_CHARS_PER_PASS: u32 = 1000;
 
 struct SampleInfo {
     origin_x: u32,
@@ -10,9 +14,12 @@ struct SampleInfo {
     sample_height: u32,
     image_width: u32,
     image_height: u32,
+    _pad1: u32,
+    _pad2: u32,
 };
 
 struct Vertex {
+    @builtin(instance_index) instance_index: u32,
     @location(0) position: vec3<f32>,
     @location(1) color: vec4<f32>,
     @location(2) tex_coord: vec2<f32>,
@@ -21,14 +28,19 @@ struct Vertex {
 struct VertexShaderOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) tex_coord: vec2<f32>,
+    @location(1) instance_index: u32,
 };
 
 @vertex
 fn vs_main(vertex: Vertex) -> VertexShaderOutput {
     var out: VertexShaderOutput;
-    out.position = transform * vec4<f32>(vertex.position, 1.0);
+
+    let sample_data = sample_info_array[vertex.instance_index];
+
+    out.position = transforms_array[vertex.instance_index] * vec4<f32>(vertex.position, 1.0);
     out.tex_coord = vertex.tex_coord;
     out.tex_coord.y = 1.0 - out.tex_coord.y;
+    out.instance_index = vertex.instance_index;
 
     let start_x = f32(sample_data.origin_x) / f32(sample_data.image_width);
     let start_y = f32(sample_data.origin_y) / f32(sample_data.image_height);
@@ -51,10 +63,7 @@ fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
 
     let l = length(c.xyz);
 
-    // for debug: highlight the background
-    // if l < 0.3 {
-    //     return vec4<f32>(1.0, 0.4, 0.4, 0.4);
-    // }
+    let col = color_array[in.instance_index];
 
-    return vec4<f32>(1.0, 1.0, 1.0, smoothstep(0.38, 0.43, l));
+    return vec4<f32>(col.xyz, col.w * smoothstep(0.33, 0.37, l));
 }
