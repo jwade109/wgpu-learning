@@ -217,6 +217,7 @@ impl<'a> Renderer<'a> {
     }
 
     pub fn load_font(&mut self, name: &str) -> usize {
+        println!("Loading font {name}");
         let data_path = format!("fonts/{name}/font_data.json");
         let texture_path = format!("fonts/{name}/font.png");
         let texture = SpriteMaterial::load(&texture_path, &self.device, &self.queue);
@@ -273,30 +274,38 @@ impl<'a> Renderer<'a> {
         rp.set_bind_group(1, self.textures.values().next().unwrap().bind_group(), &[]);
 
         for i in 0..world.quads.len() {
-            if let EntityKind::Mesh = &world.quads[i].kind {
-                let bg = self.standard_3d_pipeline.transforms().bind_group(i);
+            let bg = self.standard_3d_pipeline.transforms().bind_group(i);
 
-                let Some(mesh) = self.meshes.get(&world.quads[i].mesh_id) else {
-                    println!("Failed to get mesh of type {:?}", world.quads[i].mesh_id);
-                    continue;
-                };
+            let Some(mesh) = self.meshes.get(&world.quads[i].mesh_id) else {
+                println!("Failed to get mesh of type {:?}", world.quads[i].mesh_id);
+                continue;
+            };
 
-                mesh.set_as_active(rp);
+            mesh.set_as_active(rp);
 
-                rp.set_bind_group(0, bg, &[]);
-                rp.draw_indexed(0..mesh.index_count(), 0, 0..1);
-            }
+            rp.set_bind_group(0, bg, &[]);
+            rp.draw_indexed(0..mesh.index_count(), 0, 0..1);
         }
     }
 
-    fn draw_ui(&mut self, rp: &mut wgpu::RenderPass, world: &World) {
+    fn draw_ui(&mut self, rp: &mut wgpu::RenderPass, commands: &RenderCommands) {
         let mesh = self.meshes.get(&0).unwrap();
         let (sx, sy) = self.window.get_size();
 
-        let obj = world.text.iter().next().unwrap();
+        let commands: Vec<_> = commands
+            .commands()
+            .filter_map(|e: &RenderCommand| match e {
+                RenderCommand::Char(c) => Some(*c),
+            })
+            .collect();
+
+        let obj = commands.iter().next().unwrap();
         let (font, material) = self.fonts.get(&obj.font).unwrap();
 
-        for (i, text) in world.text.iter().enumerate() {
+        for (i, text) in commands.iter().enumerate() {
+            if i >= 1000 {
+                break;
+            }
             let range = font.get_sample_range(text.c).unwrap();
             let transform = char_transform(text.x, text.y, text.width, text.height, sx, sy);
 
@@ -305,7 +314,7 @@ impl<'a> Renderer<'a> {
         }
 
         self.text_pipeline
-            .draw_text(rp, mesh, material, world.text.len());
+            .draw_text(rp, mesh, material, commands.len());
     }
 
     fn update_projection(&mut self, world: &World) {
@@ -338,7 +347,11 @@ impl<'a> Renderer<'a> {
         );
     }
 
-    pub fn render(&mut self, world: &mut World) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(
+        &mut self,
+        world: &mut World,
+        commands: &RenderCommands,
+    ) -> Result<(), wgpu::SurfaceError> {
         let (w, h) = self.window.get_size();
 
         if w == 0 || h == 0 {
@@ -406,7 +419,7 @@ impl<'a> Renderer<'a> {
                 }
                 PipelineSelector::World3d => {
                     self.draw_3d(&mut renderpass, &world);
-                    self.draw_ui(&mut renderpass, &world);
+                    self.draw_ui(&mut renderpass, &commands);
                 }
             }
         }

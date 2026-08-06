@@ -61,9 +61,14 @@ fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
     c.y = pow(c.y, 2.0);
     c.z = pow(c.z, 2.0);
 
-    let l = length(c.xyz);
+    let l = c.x;
 
     let col = color_array[in.instance_index];
 
-    return vec4<f32>(col.xyz, col.w * smoothstep(0.33, 0.37, l));
+    // for debugging
+    // if l < 0.1 {
+    //     return vec4<f32>(1.0, 0.0, 0.0, 0.3);
+    // }
+
+    return vec4<f32>(col.xyz, col.w * smoothstep(0.16, 0.18, l));
 }

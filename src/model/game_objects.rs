@@ -6,39 +6,8 @@ use crate::{
 };
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
-pub enum TextureOrChar {
-    Texture(usize),
-    Char(usize, char),
-    Color,
-}
-
-impl TextureOrChar {
-    pub fn id(&self) -> Option<usize> {
-        match self {
-            TextureOrChar::Char(id, _) => Some(*id),
-            TextureOrChar::Texture(id) => Some(*id),
-            _ => None,
-        }
-    }
-
-    pub fn char(&self) -> Option<char> {
-        match self {
-            TextureOrChar::Char(_, c) => Some(*c),
-            _ => None,
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub enum EntityKind {
     Mesh,
-    ScreenRect {
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
-        tex_or_char: TextureOrChar,
-    },
 }
 
 pub struct Object {
@@ -60,19 +29,9 @@ impl Object {
     }
 }
 
-pub struct ScreenText {
-    pub x: i32,
-    pub y: i32,
-    pub width: i32,
-    pub height: i32,
-    pub c: char,
-    pub font: usize,
-}
-
 pub struct World {
     pub time: f32,
     pub quads: Vec<Object>,
-    pub text: Vec<ScreenText>,
     pub camera: Camera,
 }
 
@@ -81,7 +40,6 @@ impl World {
         World {
             time: 0.0,
             quads: Vec::new(),
-            text: Vec::new(),
             camera: Camera::new(),
         }
     }
@@ -94,17 +52,6 @@ impl World {
             kind: EntityKind::Mesh,
             should_animate: false,
             mesh_id,
-        });
-    }
-
-    pub fn ui(&mut self, x: i32, y: i32, w: i32, h: i32, c: char, font: usize) {
-        self.text.push(ScreenText {
-            x,
-            y,
-            width: w,
-            height: h,
-            c,
-            font,
         });
     }
 

@@ -2,6 +2,7 @@ use crate::renderer_backend::{
     bind_group::BindGroupBuilder, BindGroupLayoutBuilder, TextureSampleRange,
 };
 
+#[derive(Debug)]
 pub struct SpriteMaterial {
     size: (u32, u32),
     bind_group: wgpu::BindGroup,

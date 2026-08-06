@@ -4,18 +4,121 @@ use glfw::{fail_on_errors, Action, ClientApiHint, Key, WindowHint};
 use glm::*;
 use wgpu_learning::{model::*, renderer_backend::*};
 
+fn make_string_commands(
+    commands: &mut RenderCommands,
+    renderer: &Renderer,
+    font_id: usize,
+    font_size: f64,
+    mut x_origin: f64,
+    mut y_origin: f64,
+    text: &str,
+) {
+    let (font, _sprite) = renderer.fonts.get(&font_id).unwrap();
+
+    let mut col_offset = 0;
+
+    for ch in text.chars() {
+        if ch == '\n' {
+            y_origin += font.size as f64 * font_size;
+            x_origin = 100.0;
+            col_offset = 0;
+            continue;
+        }
+
+        let Some(data) = font.characters.get(&ch) else {
+            continue;
+        };
+
+        if ch == ' ' && col_offset == 0 {
+            continue;
+        }
+
+        let w = data.width as f64 * font_size;
+        let h = data.height as f64 * font_size;
+
+        let x = x_origin - data.origin_x as f64 * font_size;
+        let y = y_origin - data.origin_y as f64 * font_size + font.size as f64 * font_size;
+
+        let x = x.round() as i32;
+        let y = y.round() as i32;
+
+        let w = w.round() as i32;
+        let h = h.round() as i32;
+
+        if ch != ' ' {
+            commands.char(x, y, w, h, ch, font_id);
+        }
+
+        col_offset += 1;
+
+        x_origin += data.advance as f64 * font_size;
+
+        if ch == ' ' && x_origin + 400.0 + w as f64 > renderer.window.get_size().0 as f64 {
+            y_origin += font.size as f64 * font_size;
+            x_origin = 100.0;
+            col_offset = 0;
+        }
+    }
+}
+
+fn make_commands(renderer: &Renderer, font_index: i32, font_size: f64) -> RenderCommands {
+    let fonts = renderer.fonts.keys().collect::<Vec<_>>();
+    let font_id = *fonts[(font_index % fonts.len() as i32) as usize];
+
+    let (font, _) = renderer.fonts.get(&font_id).unwrap();
+
+    let info = format!("{} {:0.2}", font.name, font_size);
+
+    let text = "Saturn is the sixth planet from the Sun and the \
+        second largest in the Solar System, after Jupiter. It is a gas giant, \
+        with an average radius of about 9 times that of Earth. It has an \
+        eighth of the average density of Earth, but is over 95 times more \
+        massive. Even though Saturn is almost as big as Jupiter, Saturn has \
+        less than a third of its mass. Saturn orbits the Sun at a distance \
+        of 9.59 AU (1,434 million km), with an orbital period of 29.45 years.\
+        \n\n\
+        Saturn's interior is thought to be composed of a rocky core, surrounded \
+        by a deep layer of metallic hydrogen, an intermediate layer of liquid \
+        hydrogen and liquid helium, and an outer layer of gas. Saturn has a \
+        pale yellow hue, due to ammonia crystals in its upper atmosphere. An \
+        electrical current in the metallic hydrogen layer is thought to give \
+        rise to Saturn's planetary magnetic field, which is weaker than Earth's, \
+        but has a magnetic moment 580 times that of Earth because of Saturn's \
+        greater size. Saturn's magnetic field strength is about a twentieth \
+        that of Jupiter.[27] The outer atmosphere is generally bland and \
+        lacking in contrast, although long-lived features can appear. Wind \
+        speeds on Saturn can reach 1,800 kilometres per hour (1,100 miles \
+        per hour).";
+
+    let mut commands = RenderCommands::new();
+
+    make_string_commands(&mut commands, renderer, font_id, 0.8, 100.0, 100.0, &info);
+
+    make_string_commands(
+        &mut commands,
+        renderer,
+        font_id,
+        font_size,
+        100.0,
+        200.0,
+        &text,
+    );
+
+    commands
+}
+
 fn make_world(renderer: &mut Renderer) -> World {
     let quad_id = renderer.spawn_mesh(make_quad(&renderer.device, 1.0));
     let cube_id = renderer.spawn_mesh(make_cube(&renderer.device, Vec4::new(1.0, 0.6, 0.6, 0.4)));
     let tetra_id = renderer.spawn_mesh(make_tetrahedron(&renderer.device));
     let nine_gon_id = renderer.spawn_mesh(make_n_gon(&renderer.device, 9));
 
-    let fun_id = renderer.load_texture("img/invincible.jpg");
+    renderer.load_texture("img/invincible.jpg");
 
-    let font_id = renderer.load_font("cambria");
-    let font_id = renderer.load_font("consolas");
-    let font_id = renderer.load_font("garamond");
-    let font_id = renderer.load_font("arial");
+    renderer.load_font("cambria");
+    renderer.load_font("consolas");
+    renderer.load_font("garamond");
+    renderer.load_font("arial");
 
     let mut world = World::new();
 
@@ -79,43 +182,6 @@ fn make_world(renderer: &mut Renderer) -> World {
         });
     }
 
-    let mut x_origin = 100;
-    let mut y_origin = 200;
-    let scale = 0.7;
-
-    let (font, _) = renderer.fonts.get(&font_id).unwrap();
-
-    let text = "Lorem Ipsum is simply dummy text of the printing and typesetting \
-        industry. Lorem Ipsum has been the industry's standard dummy text ever since 1966, \
-        when designers at Letraset and James Mosley, the librarian at St Bride Printing Library \
-        in London, took a 1914 Cicero translation and scrambled it to make dummy text for \
-        Letraset's Body Type sheets. It has survived not only many decades, but also the \
-        leap into electronic typesetting, remaining essentially unchanged. \
-        It was popularised thanks to these sheets and more recently with desktop publishing \
-        software like Aldus PageMaker and Microsoft Word including versions of Lorem Ipsum.";
-
-    for (i, ch) in text.char_indices() {
-
-        let Some(data) = font.characters.get(&ch) else {
-            continue;
-        };
-
-        let w = data.width as f32 * scale;
-        let h = data.height as f32 * scale;
-
-        let x = x_origin - (data.origin_x as f32 * scale).round() as i32;
-        let y = y_origin - (data.origin_y as f32 * scale).round() as i32;
-
-        world.ui(x, y, w.round() as i32, h.round() as i32, ch, font_id);
-
-        x_origin += (data.advance as f32 * scale).round() as i32;
-
-        if i % 60 == 0 && i > 0 {
-            y_origin += (100 as f32 * scale) as i32;
-            x_origin = 100;
-        }
-    }
-
     world
 }
 
@@ -162,11 +228,18 @@ async fn run() {
 
     let mut world = make_world(&mut renderer);
 
+    let mut font_index = 0i32;
+    let mut font_size = 1.1f64;
+    let mut target_font_size = 1.0f64;
+
     while !renderer.window.should_close() {
         glfw.poll_events();
 
         renderer.update(&mut world);
 
+        font_size += (target_font_size - font_size) * 0.03;
+
+        let commands = make_commands(&renderer, font_index, font_size);
         let ctrls = make_camera_controls(&keys_pressed);
 
         world.update(16.67 / 1000.0, &ctrls);
@@ -202,6 +275,24 @@ async fn run() {
                         enum_iterator::previous_cycle(&renderer.pipeline_selector);
                 }
 
+                glfw::WindowEvent::Key(Key::M, _, Action::Press, _) => {
+                    font_index += 1;
+                    font_index = font_index.clamp(0, renderer.fonts.len() as i32 - 1);
+                }
+                glfw::WindowEvent::Key(Key::N, _, Action::Press, _) => {
+                    font_index -= 1;
+                    font_index = font_index.clamp(0, renderer.fonts.len() as i32 - 1);
+                }
+
+                glfw::WindowEvent::Key(Key::L, _, Action::Press, _) => {
+                    target_font_size *= 1.1;
+                    target_font_size = target_font_size.clamp(0.1, 4.0);
+                }
+                glfw::WindowEvent::Key(Key::K, _, Action::Press, _) => {
+                    target_font_size /= 1.1;
+                    target_font_size = target_font_size.clamp(0.1, 4.0);
+                }
+
                 //Window was moved
                 glfw::WindowEvent::Pos(..) => {
                     renderer.update_surface();
@@ -217,7 +308,7 @@ async fn run() {
             }
         }
 
-        match renderer.render(&mut world) {
+        match renderer.render(&mut world, &commands) {
             Ok(_) => {}
             Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                 renderer.update_surface();
