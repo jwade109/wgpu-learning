@@ -1,73 +1,16 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use glfw::{fail_on_errors, Action, ClientApiHint, Key, WindowHint};
 use glm::*;
 use wgpu_learning::{model::*, renderer_backend::*};
 
-fn make_string_commands(
-    commands: &mut RenderCommands,
-    renderer: &Renderer,
-    font_id: usize,
-    font_size: f64,
-    mut x_origin: f64,
-    mut y_origin: f64,
-    text: &str,
-) {
-    let (font, _sprite) = renderer.fonts.get(&font_id).unwrap();
-
-    let mut col_offset = 0;
-
-    for ch in text.chars() {
-        if ch == '\n' {
-            y_origin += font.size as f64 * font_size;
-            x_origin = 100.0;
-            col_offset = 0;
-            continue;
-        }
-
-        let Some(data) = font.characters.get(&ch) else {
-            continue;
-        };
-
-        if ch == ' ' && col_offset == 0 {
-            continue;
-        }
-
-        let w = data.width as f64 * font_size;
-        let h = data.height as f64 * font_size;
-
-        let x = x_origin - data.origin_x as f64 * font_size;
-        let y = y_origin - data.origin_y as f64 * font_size + font.size as f64 * font_size;
-
-        let x = x.round() as i32;
-        let y = y.round() as i32;
-
-        let w = w.round() as i32;
-        let h = h.round() as i32;
-
-        if ch != ' ' {
-            commands.char(x, y, w, h, ch, font_id);
-        }
-
-        col_offset += 1;
-
-        x_origin += data.advance as f64 * font_size;
-
-        if ch == ' ' && x_origin + 400.0 + w as f64 > renderer.window.get_size().0 as f64 {
-            y_origin += font.size as f64 * font_size;
-            x_origin = 100.0;
-            col_offset = 0;
-        }
-    }
-}
-
-fn make_commands(renderer: &Renderer, font_index: i32, font_size: f64) -> RenderCommands {
-    let fonts = renderer.fonts.keys().collect::<Vec<_>>();
+fn make_commands(commands: &mut RenderCommands, font_index: i32, font_size: f64) {
+    let fonts = commands.fonts.keys().collect::<Vec<_>>();
     let font_id = *fonts[(font_index % fonts.len() as i32) as usize];
 
-    let (font, _) = renderer.fonts.get(&font_id).unwrap();
+    let font = commands.fonts.get(&font_id).unwrap();
 
-    let info = format!("{} {:0.2}", font.name, font_size);
+    let info = format!("{} {:0.2} px", font.name, font_size);
 
     let text = "Saturn is the sixth planet from the Sun and the \
         second largest in the Solar System, after Jupiter. It is a gas giant, \
@@ -88,23 +31,26 @@ fn make_commands(renderer: &Renderer, font_index: i32, font_size: f64) -> Render
         that of Jupiter.[27] The outer atmosphere is generally bland and \
         lacking in contrast, although long-lived features can appear. Wind \
         speeds on Saturn can reach 1,800 kilometres per hour (1,100 miles \
-        per hour).";
+        per hour).\
+        \n\n\
+        The planet has a bright and extensive system of rings, composed mainly \
+        of ice particles, with a smaller amount of rocky debris and dust. At \
+        least 293 moons orbit the planet, of which 63 are officially named; \
+        these do not include the hundreds of moonlets in the rings. Titan, \
+        Saturn's largest moon and the second largest in the Solar System, is \
+        larger (but less massive) than the planet Mercury and is the only moon \
+        in the Solar System that has a substantial atmosphere.[28]";
 
-    let mut commands = RenderCommands::new();
+    let layout_width = 1600.0;
 
-    make_string_commands(&mut commands, renderer, font_id, 0.8, 100.0, 100.0, &info);
+    commands.paragraph(font_id, 40.0, 200.0, 100.0, &info, None);
+    commands.paragraph(font_id, font_size, 200.0, 200.0, &text, Some(layout_width));
 
-    make_string_commands(
-        &mut commands,
-        renderer,
-        font_id,
-        font_size,
-        100.0,
-        200.0,
-        &text,
-    );
+    let gray = Vec4::new(1.0, 1.0, 1.0, 0.3);
+    let white = Vec4::new(1.0, 1.0, 1.0, 1.0);
 
-    commands
+    commands.rect(150.0, 100.0, 7.0, 1000.0, white);
+    commands.rect(200.0, 180.0, layout_width, 7.0, gray);
 }
 
 fn make_world(renderer: &mut Renderer) -> World {
@@ -119,6 +65,7 @@ fn make_world(renderer: &mut Renderer) -> World {
     renderer.load_font("consolas");
     renderer.load_font("garamond");
     renderer.load_font("arial");
+    renderer.load_font("calibri");
 
     let mut world = World::new();
 
@@ -229,8 +176,14 @@ async fn run() {
     let mut world = make_world(&mut renderer);
 
     let mut font_index = 0i32;
-    let mut font_size = 1.1f64;
-    let mut target_font_size = 1.0f64;
+    let mut font_size = 80.0f64;
+    let mut target_font_size = 72.0f64;
+
+    let font_info: BTreeMap<usize, FontInfo> = renderer
+        .fonts
+        .iter()
+        .map(|(id, (font, _sprite))| (*id, font.clone()))
+        .collect();
 
     while !renderer.window.should_close() {
         glfw.poll_events();
@@ -239,7 +192,9 @@ async fn run() {
 
         font_size += (target_font_size - font_size) * 0.03;
 
-        let commands = make_commands(&renderer, font_index, font_size);
+        let mut commands = RenderCommands::new(font_info.clone());
+
+        make_commands(&mut commands, font_index, font_size);
         let ctrls = make_camera_controls(&keys_pressed);
 
         world.update(16.67 / 1000.0, &ctrls);
@@ -286,17 +241,17 @@ async fn run() {
 
                 glfw::WindowEvent::Key(Key::L, _, Action::Press, _) => {
                     target_font_size *= 1.1;
-                    target_font_size = target_font_size.clamp(0.1, 4.0);
+                    target_font_size = target_font_size.clamp(10.0, 250.0);
                 }
                 glfw::WindowEvent::Key(Key::K, _, Action::Press, _) => {
                     target_font_size /= 1.1;
-                    target_font_size = target_font_size.clamp(0.1, 4.0);
+                    target_font_size = target_font_size.clamp(10.0, 250.0);
                 }
 
                 //Window was moved
                 glfw::WindowEvent::Pos(..) => {
                     renderer.update_surface();
-                    renderer.resize(renderer.size);
+                    renderer.resize(renderer.window.get_size());
                 }
 
                 //Window was resized
@@ -312,7 +267,7 @@ async fn run() {
             Ok(_) => {}
             Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                 renderer.update_surface();
-                renderer.resize(renderer.size);
+                renderer.resize(renderer.window.get_size());
             }
             Err(e) => eprintln!("{:?}", e),
         }

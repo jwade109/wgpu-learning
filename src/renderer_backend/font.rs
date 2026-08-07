@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone, Copy)]
 pub struct CodePointInfo {
     pub x: u32,
     pub y: u32,
@@ -14,7 +14,7 @@ pub struct CodePointInfo {
     pub advance: i32,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct FontInfo {
     pub name: String,
     pub size: u32,

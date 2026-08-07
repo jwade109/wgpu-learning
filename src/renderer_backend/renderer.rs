@@ -1,6 +1,6 @@
 use crate::{model::*, renderer_backend::*};
 use enum_iterator::Sequence;
-use glm::{Mat4, Vec2, Vec3, Vec4};
+use glm::*;
 use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 
@@ -21,9 +21,10 @@ pub struct Renderer<'a> {
     pub device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    pub size: (i32, i32),
+
     pub window: &'a mut glfw::Window,
     lava_lamp_pipeline: LavaLampPipeline,
+    blur_pipeline: BlurPipeline,
     map_pipeline: wgpu::RenderPipeline,
     standard_3d_pipeline: Standard3DPipeline,
     single_color_pipeline: SingleColorPipeline,
@@ -35,6 +36,7 @@ pub struct Renderer<'a> {
     next_resource_id: usize,
 
     depth_texture: Texture,
+    intermediate_texture: Texture,
 
     common_shader_info: SingleUBO,
 }
@@ -120,6 +122,8 @@ impl<'a> Renderer<'a> {
         });
 
         let depth_texture = Texture::create_depth_texture(&device, &config, "depth_texture");
+        let intermediate_texture =
+            Texture::create_intermediate_texture(&device, &config, "intermediate_texture");
 
         let time_etc_data_bind_group =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -164,6 +168,8 @@ impl<'a> Renderer<'a> {
 
         let text_pipeline = TextPipeline::new(&device, &config, &queue);
 
+        let blur_pipeline = BlurPipeline::new(&device, &config, &queue);
+
         Self {
             paused: false,
             mouse_pos_smoothed: [0.0, 0.0],
@@ -173,8 +179,8 @@ impl<'a> Renderer<'a> {
             device,
             queue,
             config,
-            size,
             lava_lamp_pipeline,
+            blur_pipeline,
             map_pipeline,
             standard_3d_pipeline,
             single_color_pipeline,
@@ -191,6 +197,7 @@ impl<'a> Renderer<'a> {
             pipeline_selector: PipelineSelector::World3d,
             draw_wireframes: false,
             depth_texture,
+            intermediate_texture,
         }
     }
 
@@ -235,12 +242,16 @@ impl<'a> Renderer<'a> {
 
     pub fn resize(&mut self, new_size: (i32, i32)) {
         if new_size.0 > 0 && new_size.1 > 0 {
-            self.size = new_size;
             self.config.width = new_size.0 as u32;
             self.config.height = new_size.1 as u32;
             self.surface.configure(&self.device, &self.config);
             self.depth_texture =
                 Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
+            self.intermediate_texture = Texture::create_intermediate_texture(
+                &self.device,
+                &self.config,
+                "intermediate_texture",
+            );
         }
     }
 
@@ -251,19 +262,32 @@ impl<'a> Renderer<'a> {
             .unwrap();
     }
 
-    fn draw_map(&self, rp: &mut wgpu::RenderPass) {
+    fn draw_map(&self, view: &wgpu::TextureView) {
+        let mut command_encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
+
         rp.set_pipeline(&self.map_pipeline);
         rp.set_bind_group(0, &self.common_shader_info.bind_group, &[]);
         let mesh = self.meshes.get(&0).unwrap();
-        draw_mesh(rp, mesh);
+        draw_mesh(&mut rp, mesh);
+
+        drop(rp);
+        self.queue.submit(std::iter::once(command_encoder.finish()));
     }
 
-    fn draw_3d(&mut self, rp: &mut wgpu::RenderPass, world: &World) {
-        self.standard_3d_pipeline
-            .set_draw_wireframes(self.draw_wireframes);
+    fn draw_3d(&self, world: &World, view: &wgpu::TextureView) {
+        let mut command_encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
+
         rp.set_pipeline(self.standard_3d_pipeline.pipeline());
         rp.set_bind_group(2, &self.common_shader_info.bind_group, &[]);
-        self.standard_3d_pipeline.set_bindings(rp);
+        self.standard_3d_pipeline.set_bindings(&mut rp);
 
         for i in 0..world.quads.len() {
             let matrix = world.quads[i].get_transform_matrix();
@@ -281,40 +305,91 @@ impl<'a> Renderer<'a> {
                 continue;
             };
 
-            mesh.set_as_active(rp);
+            mesh.set_as_active(&mut rp);
 
             rp.set_bind_group(0, bg, &[]);
             rp.draw_indexed(0..mesh.index_count(), 0, 0..1);
         }
+
+        drop(rp);
+
+        self.queue.submit(std::iter::once(command_encoder.finish()));
     }
 
-    fn draw_ui(&mut self, rp: &mut wgpu::RenderPass, commands: &RenderCommands) {
+    fn draw_rectangles(&self, view: &wgpu::TextureView, commands: &RenderCommands) {
         let mesh = self.meshes.get(&0).unwrap();
         let (sx, sy) = self.window.get_size();
 
-        let commands: Vec<_> = commands
+        let commands: Vec<RectCommand> = commands
+            .commands()
+            .filter_map(|e: &RenderCommand| match e {
+                RenderCommand::Rect(c) => Some(*c),
+                _ => None,
+            })
+            .collect();
+
+        for cmd in commands {
+            let mut command_encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+            let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
+
+            let tf = char_transform(cmd.x, cmd.y, cmd.width, cmd.height, sx as f64, sy as f64);
+
+            self.single_color_pipeline
+                .draw(&mut rp, mesh, &tf, &cmd.color, &self.queue);
+
+            drop(rp);
+
+            self.queue.submit(std::iter::once(command_encoder.finish()));
+        }
+    }
+
+    fn draw_ui(&mut self, view: &wgpu::TextureView, commands: &RenderCommands) {
+        let mesh = self.meshes.get(&0).unwrap();
+        let (sx, sy) = self.window.get_size();
+
+        let commands: Vec<CharCommand> = commands
             .commands()
             .filter_map(|e: &RenderCommand| match e {
                 RenderCommand::Char(c) => Some(*c),
+                _ => None,
             })
             .collect();
 
         let obj = commands.iter().next().unwrap();
         let (font, material) = self.fonts.get(&obj.font).unwrap();
 
-        for (i, text) in commands.iter().enumerate() {
-            if i >= 1000 {
-                break;
+        for chunk in commands.chunks(TextPipeline::MAX_CHARS_PER_PASS) {
+            let mut command_encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+            let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
+
+            for (i, text) in chunk.iter().enumerate() {
+                let range = font.get_sample_range(text.c).unwrap();
+                let transform = char_transform(
+                    text.x,
+                    text.y,
+                    text.width,
+                    text.height,
+                    sx as f64,
+                    sy as f64,
+                );
+                self.text_pipeline.set_range(&self.queue, i, &range);
+                self.text_pipeline.set_transform(&self.queue, i, &transform);
+                self.text_pipeline.set_color(&self.queue, i, text.color)
             }
-            let range = font.get_sample_range(text.c).unwrap();
-            let transform = char_transform(text.x, text.y, text.width, text.height, sx, sy);
 
-            self.text_pipeline.set_range(&self.queue, i, &range);
-            self.text_pipeline.set_transform(&self.queue, i, &transform);
+            self.text_pipeline
+                .draw_text(&mut rp, mesh, material, chunk.len());
+
+            drop(rp);
+
+            self.queue.submit(std::iter::once(command_encoder.finish()));
         }
-
-        self.text_pipeline
-            .draw_text(rp, mesh, material, commands.len());
     }
 
     fn update_projection(&mut self, world: &World) {
@@ -347,6 +422,59 @@ impl<'a> Renderer<'a> {
         );
     }
 
+    fn get_render_pass<'b>(
+        &self,
+        command_encoder: &'b mut wgpu::CommandEncoder,
+        clear_color: Option<wgpu::Color>,
+        view: &wgpu::TextureView,
+    ) -> wgpu::RenderPass<'b> {
+        let depth_stencil_attachment = Some(wgpu::RenderPassDepthStencilAttachment {
+            view: &self.depth_texture.view,
+            depth_ops: Some(wgpu::Operations {
+                load: wgpu::LoadOp::Clear(1.0),
+                store: wgpu::StoreOp::Store,
+            }),
+            stencil_ops: None,
+        });
+
+        let load = clear_color.map_or(wgpu::LoadOp::Load, |c| wgpu::LoadOp::Clear(c));
+
+        let render_pass_descriptor = wgpu::RenderPassDescriptor {
+            label: Some("Render Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment,
+            occlusion_query_set: None,
+            timestamp_writes: None,
+        };
+
+        command_encoder.begin_render_pass(&render_pass_descriptor)
+    }
+
+    fn blur_pass(&self, incoming: &wgpu::Texture, outgoing: &wgpu::TextureView) {
+        let mesh = self.meshes.get(&0).unwrap();
+
+        let mut command_encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        let mut rp = self.get_render_pass(&mut command_encoder, None, &outgoing);
+
+        let texture = self.textures.iter().next().unwrap().1;
+
+        self.blur_pipeline
+            .blur_pass(&mut rp, mesh, texture.bind_group());
+
+        drop(rp);
+        self.queue.submit(std::iter::once(command_encoder.finish()));
+    }
+
     pub fn render(
         &mut self,
         world: &mut World,
@@ -366,65 +494,29 @@ impl<'a> Renderer<'a> {
             self.device.poll(maintain);
         }
 
-        let depth_stencil_attachment = Some(wgpu::RenderPassDepthStencilAttachment {
-            view: self.depth_texture.view(),
-            depth_ops: Some(wgpu::Operations {
-                load: wgpu::LoadOp::Clear(1.0),
-                store: wgpu::StoreOp::Store,
-            }),
-            stencil_ops: None,
-        });
-
-        let clear_color = if self.draw_wireframes {
-            wgpu::Color::default()
-        } else {
-            wgpu::Color {
-                r: 0.4,
-                g: 0.4,
-                b: 0.9,
-                a: 1.0,
-            }
-        };
-
         let drawable = self.surface.get_current_texture()?;
-        let render_pass_descriptor = wgpu::RenderPassDescriptor {
-            label: Some("Render Pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &drawable
-                    .texture
-                    .create_view(&wgpu::TextureViewDescriptor::default()),
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(clear_color),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment,
-            occlusion_query_set: None,
-            timestamp_writes: None,
-        };
 
-        let mut command_encoder =
-            self.device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Render Encoder"),
-                });
+        let view = drawable
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
-        {
-            let mut renderpass = command_encoder.begin_render_pass(&render_pass_descriptor);
+        self.standard_3d_pipeline
+            .set_draw_wireframes(self.draw_wireframes);
 
-            match self.pipeline_selector {
-                PipelineSelector::Map => {
-                    self.draw_map(&mut renderpass);
-                }
-                PipelineSelector::World3d => {
-                    self.draw_3d(&mut renderpass, &world);
-                    self.draw_ui(&mut renderpass, &commands);
+        match self.pipeline_selector {
+            PipelineSelector::Map => {
+                self.draw_map(&view);
+            }
+            PipelineSelector::World3d => {
+                self.draw_3d(&world, &view);
+                if !self.draw_wireframes {
+                    self.blur_pass(&self.intermediate_texture.texture, &view);
+                    self.draw_ui(&view, commands);
+                    self.draw_rectangles(&view, commands);
                 }
             }
         }
 
-        self.queue.submit(std::iter::once(command_encoder.finish()));
         self.device.poll(wgpu::Maintain::wait());
 
         drawable.present();

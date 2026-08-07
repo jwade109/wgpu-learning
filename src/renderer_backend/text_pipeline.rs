@@ -4,11 +4,6 @@ use crate::{model::translation_matrix, renderer_backend::*};
 use glm::{Mat4, Vec3, Vec4};
 use wgpu::*;
 
-pub trait GpuStorage<const N: usize> {
-    const SIZE: usize = N;
-    fn to_bytes(&self) -> &[u8; N];
-}
-
 pub struct TextPipeline {
     pipeline: RenderPipeline,
     colors: BufferResource,
@@ -16,10 +11,10 @@ pub struct TextPipeline {
     transforms: BufferResource,
 }
 
-struct BufferResource {
-    buffer: Buffer,
-    bind_group: BindGroup,
-    layout: BindGroupLayout,
+pub struct BufferResource {
+    pub buffer: Buffer,
+    pub bind_group: BindGroup,
+    pub layout: BindGroupLayout,
 }
 
 fn make_array_resource(device: &Device, n_elements: usize, elem_size: usize) -> BufferResource {
@@ -80,27 +75,15 @@ pub struct GpuSampleInfo {
     pub _pad2: u32,
 }
 
-const MAX_CHARS_PER_PASS: usize = 1000;
-
 impl TextPipeline {
+    pub const MAX_CHARS_PER_PASS: usize = 480;
+
     pub fn new(device: &Device, config: &SurfaceConfiguration, queue: &Queue) -> Self {
         let size = std::mem::size_of::<GpuSampleInfo>();
         assert!(size == 4 * 8);
-        let range_info = make_array_resource(device, MAX_CHARS_PER_PASS, size);
-        let colors = make_array_resource(device, MAX_CHARS_PER_PASS, 16);
-        let transforms = make_array_resource(device, MAX_CHARS_PER_PASS, 64);
-
-        let transforms_ubo_bind_group_layout = {
-            let mut builder = BindGroupLayoutBuilder::new(&device);
-            builder.add_ubo();
-            builder.build("Transforms")
-        };
-
-        let sample_info_ubo_bind_group_layout = {
-            let mut builder = BindGroupLayoutBuilder::new(&device);
-            builder.add_ubo();
-            builder.build("Sample Info")
-        };
+        let range_info = make_array_resource(device, Self::MAX_CHARS_PER_PASS, size);
+        let colors = make_array_resource(device, Self::MAX_CHARS_PER_PASS, 16);
+        let transforms = make_array_resource(device, Self::MAX_CHARS_PER_PASS, 64);
 
         let material_bind_group_layout;
         {
@@ -110,7 +93,7 @@ impl TextPipeline {
         }
 
         let mut builder = PipelineBuilder::new(&device);
-        let shader = Shader::from_path("src/shaders/text_renderer.wgsl");
+        let shader = Shader::from_path("src/shaders/text_shader.wgsl");
 
         builder.add_bind_group_layout(&material_bind_group_layout);
         builder.add_bind_group_layout(&colors.layout);
@@ -125,7 +108,7 @@ impl TextPipeline {
             true,
         );
 
-        for i in 0..MAX_CHARS_PER_PASS {
+        for i in 0..Self::MAX_CHARS_PER_PASS {
             let color = [1.0f32, 1.0, 1.0, 1.0];
             queue.write_buffer(&colors.buffer, 16 * i as u64, any_as_u8_slice(&color));
         }
@@ -169,13 +152,7 @@ impl TextPipeline {
         );
     }
 
-    pub fn draw_text(
-        &mut self,
-        rp: &mut RenderPass,
-        mesh: &Mesh,
-        material: &SpriteMaterial,
-        n: usize,
-    ) {
+    pub fn draw_text(&self, rp: &mut RenderPass, mesh: &Mesh, material: &SpriteMaterial, n: usize) {
         rp.set_pipeline(&self.pipeline);
 
         rp.set_bind_group(0, material.bind_group(), &[]);
@@ -183,14 +160,14 @@ impl TextPipeline {
         rp.set_bind_group(2, &self.range_info.bind_group, &[]);
         rp.set_bind_group(3, &self.transforms.bind_group, &[]);
 
-        let n = n.min(MAX_CHARS_PER_PASS);
+        let n = n.min(Self::MAX_CHARS_PER_PASS);
 
         mesh.set_as_active(rp);
         rp.draw_indexed(0..mesh.index_count(), 0, 0..n as u32);
     }
 }
 
-pub fn char_transform(x: i32, y: i32, width: i32, height: i32, sx: i32, sy: i32) -> Mat4 {
+pub fn char_transform(x: f64, y: f64, width: f64, height: f64, sx: f64, sy: f64) -> Mat4 {
     let width_scale = width as f32 / sx as f32;
     let height_scale = height as f32 / sy as f32;
 

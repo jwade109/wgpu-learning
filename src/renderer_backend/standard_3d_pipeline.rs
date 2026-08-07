@@ -115,7 +115,7 @@ impl Standard3DPipeline {
         &self.transforms_ubo
     }
 
-    pub fn upload_transform(&mut self, i: u64, matrix: &glm::Mat4, queue: &Queue) {
+    pub fn upload_transform(&self, i: u64, matrix: &glm::Mat4, queue: &Queue) {
         self.transforms_ubo.upload(i, matrix, queue);
     }
 

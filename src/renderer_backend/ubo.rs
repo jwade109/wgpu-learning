@@ -77,7 +77,7 @@ impl<T> UBO<T> {
         self.bind_groups.get(i).expect("Hey you dufus")
     }
 
-    pub fn upload(&mut self, i: u64, matrix: &T, queue: &wgpu::Queue) {
+    pub fn upload(&self, i: u64, matrix: &T, queue: &wgpu::Queue) {
         if i as usize >= self.bind_groups.len() {
             panic!(
                 "Dude: {i} is greater than or equal to {} (UBO {})",

@@ -32,13 +32,13 @@ impl SingleColorPipeline {
 
         let transforms_ubo = UBO::new(
             &device,
-            250,
+            1,
             transforms_ubo_bind_group_layout,
             "Single color pipeline transforms UBO",
         );
         let color_ubo = UBO::new(
             &device,
-            250,
+            1,
             color_ubo_bind_group_layout,
             "Single color pipeline color UBO",
         );
@@ -55,19 +55,18 @@ impl SingleColorPipeline {
     }
 
     pub fn draw(
-        &mut self,
+        &self,
         rp: &mut RenderPass,
         mesh: &Mesh,
         transform: &glm::Mat4,
         color: &glm::Vec4,
         queue: &Queue,
-        i: u64,
     ) {
         rp.set_pipeline(self.pipeline());
-        self.transforms_ubo.upload(i, transform, queue);
-        self.color_ubo.upload(i, color, queue);
-        rp.set_bind_group(0, self.transforms_ubo.bind_group(i as usize), &[]);
-        rp.set_bind_group(1, self.color_ubo.bind_group(i as usize), &[]);
+        self.transforms_ubo.upload(0, transform, queue);
+        self.color_ubo.upload(0, color, queue);
+        rp.set_bind_group(0, self.transforms_ubo.bind_group(0 as usize), &[]);
+        rp.set_bind_group(1, self.color_ubo.bind_group(0 as usize), &[]);
         draw_mesh(rp, mesh);
     }
 }

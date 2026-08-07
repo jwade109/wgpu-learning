@@ -8,6 +8,27 @@ pub struct Shader {
 }
 
 impl Shader {
+    pub fn from_source(contents: &str) -> Self {
+        let re = regex::Regex::new(r#"import\(\"([\w\.]+)\"\)"#).unwrap();
+
+        let mut imports = vec![];
+
+        for line in contents.lines() {
+            if let Some(cap) = re.captures(line) {
+                if let Some(import) = cap.get(1).map(|e| e.as_str()) {
+                    imports.push(import.to_string());
+                }
+            }
+        }
+
+        Self {
+            imports,
+            contents: contents.to_string(),
+            vertex_entry: "vs_main".to_string(),
+            fragment_entry: "fs_main".to_string(),
+        }
+    }
+
     pub fn from_path(path: &str) -> Self {
         let re = regex::Regex::new(r#"import\(\"([\w\.]+)\"\)"#).unwrap();
 
