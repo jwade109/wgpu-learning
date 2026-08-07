@@ -23,7 +23,7 @@ pub struct Renderer<'a> {
     config: wgpu::SurfaceConfiguration,
 
     pub window: &'a mut glfw::Window,
-    lava_lamp_pipeline: LavaLampPipeline,
+    _lava_lamp_pipeline: LavaLampPipeline,
     blur_pipeline: BlurPipeline,
     map_pipeline: wgpu::RenderPipeline,
     standard_3d_pipeline: Standard3DPipeline,
@@ -95,12 +95,7 @@ impl<'a> Renderer<'a> {
         };
         surface.configure(&device, &config);
 
-        let material_bind_group_layout;
-        {
-            let mut builder = BindGroupLayoutBuilder::new(&device);
-            builder.add_material();
-            material_bind_group_layout = builder.build("SpriteMaterial Bind Group Layout");
-        }
+        let bgl = material_bind_group_layout(&device, "SpriteMaterial Bind Group Layout");
 
         let ubo_bind_group_layout;
         {
@@ -152,7 +147,7 @@ impl<'a> Renderer<'a> {
         let standard_3d_pipeline = Standard3DPipeline::new(
             &device,
             &ubo_bind_group_layout,
-            &material_bind_group_layout,
+            &bgl,
             &time_etc_data_bind_group,
             &config,
         );
@@ -168,7 +163,7 @@ impl<'a> Renderer<'a> {
 
         let text_pipeline = TextPipeline::new(&device, &config, &queue);
 
-        let blur_pipeline = BlurPipeline::new(&device, &config, &queue);
+        let blur_pipeline = BlurPipeline::new(&device, &config);
 
         Self {
             paused: false,
@@ -179,7 +174,7 @@ impl<'a> Renderer<'a> {
             device,
             queue,
             config,
-            lava_lamp_pipeline,
+            _lava_lamp_pipeline: lava_lamp_pipeline,
             blur_pipeline,
             map_pipeline,
             standard_3d_pipeline,
@@ -209,14 +204,7 @@ impl<'a> Renderer<'a> {
     }
 
     pub fn load_texture(&mut self, path: &str) -> usize {
-        let bind_group_layout = {
-            let mut builder = BindGroupLayoutBuilder::new(&self.device);
-            builder.add_material();
-            builder.build(path)
-        };
-
-        let sprite = SpriteMaterial::new(path, &self.device, &self.queue, path, &bind_group_layout);
-
+        let sprite = SpriteMaterial::load(path, &self.device, &self.queue);
         let id = self.next_resource_id;
         self.next_resource_id += 1;
         self.textures.insert(id, sprite);
@@ -283,7 +271,7 @@ impl<'a> Renderer<'a> {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
+        let mut rp = self.get_render_pass(&mut command_encoder, Some(wgpu::Color::BLACK), &view);
 
         rp.set_pipeline(self.standard_3d_pipeline.pipeline());
         rp.set_bind_group(2, &self.common_shader_info.bind_group, &[]);
@@ -295,7 +283,11 @@ impl<'a> Renderer<'a> {
                 .upload_transform(i as u64, &matrix, &self.queue);
         }
 
-        rp.set_bind_group(1, self.textures.values().next().unwrap().bind_group(), &[]);
+        rp.set_bind_group(
+            1,
+            self.textures.values().next().unwrap().texture_bind_group(),
+            &[],
+        );
 
         for i in 0..world.quads.len() {
             let bg = self.standard_3d_pipeline.transforms().bind_group(i);
@@ -346,7 +338,7 @@ impl<'a> Renderer<'a> {
         }
     }
 
-    fn draw_ui(&mut self, view: &wgpu::TextureView, commands: &RenderCommands) {
+    fn draw_ui(&self, view: &wgpu::TextureView, commands: &RenderCommands) {
         let mesh = self.meshes.get(&0).unwrap();
         let (sx, sy) = self.window.get_size();
 
@@ -457,7 +449,7 @@ impl<'a> Renderer<'a> {
         command_encoder.begin_render_pass(&render_pass_descriptor)
     }
 
-    fn blur_pass(&self, incoming: &wgpu::Texture, outgoing: &wgpu::TextureView) {
+    fn blur_pass(&self, incoming: &Texture, outgoing: &wgpu::TextureView) {
         let mesh = self.meshes.get(&0).unwrap();
 
         let mut command_encoder = self
@@ -466,10 +458,8 @@ impl<'a> Renderer<'a> {
 
         let mut rp = self.get_render_pass(&mut command_encoder, None, &outgoing);
 
-        let texture = self.textures.iter().next().unwrap().1;
-
         self.blur_pipeline
-            .blur_pass(&mut rp, mesh, texture.bind_group());
+            .blur_pass(&mut rp, mesh, &incoming.bind_group);
 
         drop(rp);
         self.queue.submit(std::iter::once(command_encoder.finish()));
@@ -508,11 +498,13 @@ impl<'a> Renderer<'a> {
                 self.draw_map(&view);
             }
             PipelineSelector::World3d => {
-                self.draw_3d(&world, &view);
-                if !self.draw_wireframes {
-                    self.blur_pass(&self.intermediate_texture.texture, &view);
-                    self.draw_ui(&view, commands);
+                if self.draw_wireframes {
+                    self.draw_3d(&world, &view);
+                } else {
+                    self.draw_3d(&world, &self.intermediate_texture.view);
+                    self.blur_pass(&self.intermediate_texture, &view);
                     self.draw_rectangles(&view, commands);
+                    self.draw_ui(&view, commands);
                 }
             }
         }

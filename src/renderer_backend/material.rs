@@ -1,35 +1,26 @@
-use crate::renderer_backend::{
-    bind_group::BindGroupBuilder, BindGroupLayoutBuilder, TextureSampleRange,
-};
+use crate::renderer_backend::*;
+use image::GenericImageView;
 
 #[derive(Debug)]
 pub struct SpriteMaterial {
     size: (u32, u32),
     bind_group: wgpu::BindGroup,
+    texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    sampler: wgpu::Sampler,
 }
 
 impl SpriteMaterial {
     pub fn load(filename: &str, device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        let bind_group_layout = {
-            let mut builder = BindGroupLayoutBuilder::new(&device);
-            builder.add_material();
-            builder.build(filename)
-        };
-
-        SpriteMaterial::new(filename, device, queue, filename, &bind_group_layout)
+        SpriteMaterial::new(filename, device, queue, filename)
     }
 
-    pub fn new(
-        filename: &str,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        label: &str,
-        layout: &wgpu::BindGroupLayout,
-    ) -> Self {
+    fn new(filename: &str, device: &wgpu::Device, queue: &wgpu::Queue, label: &str) -> Self {
+        let bgl = material_bind_group_layout(device, filename);
+
         let bytes = std::fs::read(filename).unwrap();
         let loaded_image = image::load_from_memory(&bytes).unwrap();
         let converted = loaded_image.to_rgba8();
-        use image::GenericImageView;
         let size = loaded_image.dimensions();
         let texture_size = wgpu::Extent3d {
             width: size.0,
@@ -80,18 +71,24 @@ impl SpriteMaterial {
             mipmap_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         };
+
         let sampler = device.create_sampler(&sampler_descriptor);
 
-        // Make a bind group for everything
         let mut builder = BindGroupBuilder::new(device);
-        builder.set_layout(layout);
+        builder.set_layout(&bgl);
         builder.add_material(&view, &sampler);
         let bind_group = builder.build(label);
 
-        SpriteMaterial { size, bind_group }
+        SpriteMaterial {
+            size,
+            texture,
+            bind_group,
+            view,
+            sampler,
+        }
     }
 
-    pub fn bind_group(&self) -> &wgpu::BindGroup {
+    pub fn texture_bind_group(&self) -> &wgpu::BindGroup {
         &self.bind_group
     }
 

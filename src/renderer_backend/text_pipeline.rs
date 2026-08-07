@@ -85,17 +85,12 @@ impl TextPipeline {
         let colors = make_array_resource(device, Self::MAX_CHARS_PER_PASS, 16);
         let transforms = make_array_resource(device, Self::MAX_CHARS_PER_PASS, 64);
 
-        let material_bind_group_layout;
-        {
-            let mut builder = BindGroupLayoutBuilder::new(&device);
-            builder.add_material();
-            material_bind_group_layout = builder.build("SpriteMaterial Bind Group Layout");
-        }
+        let bgl = material_bind_group_layout(device, "SpriteMaterial Bind Group Layout");
 
         let mut builder = PipelineBuilder::new(&device);
         let shader = Shader::from_path("src/shaders/text_shader.wgsl");
 
-        builder.add_bind_group_layout(&material_bind_group_layout);
+        builder.add_bind_group_layout(&bgl);
         builder.add_bind_group_layout(&colors.layout);
         builder.add_bind_group_layout(&range_info.layout);
         builder.add_bind_group_layout(&transforms.layout);
@@ -121,11 +116,11 @@ impl TextPipeline {
         }
     }
 
-    pub fn set_color(&mut self, queue: &Queue, i: usize, color: Vec4) {
+    pub fn set_color(&self, queue: &Queue, i: usize, color: Vec4) {
         queue.write_buffer(&self.colors.buffer, 16 * i as u64, any_as_u8_slice(&color));
     }
 
-    pub fn set_transform(&mut self, queue: &Queue, i: usize, transform: &Mat4) {
+    pub fn set_transform(&self, queue: &Queue, i: usize, transform: &Mat4) {
         queue.write_buffer(
             &self.transforms.buffer,
             64 * i as u64,
@@ -133,7 +128,7 @@ impl TextPipeline {
         );
     }
 
-    pub fn set_range(&mut self, queue: &Queue, i: usize, range: &TextureSampleRange) {
+    pub fn set_range(&self, queue: &Queue, i: usize, range: &TextureSampleRange) {
         let gpu = GpuSampleInfo {
             origin_x: range.origin_x,
             origin_y: range.origin_y,
@@ -155,7 +150,7 @@ impl TextPipeline {
     pub fn draw_text(&self, rp: &mut RenderPass, mesh: &Mesh, material: &SpriteMaterial, n: usize) {
         rp.set_pipeline(&self.pipeline);
 
-        rp.set_bind_group(0, material.bind_group(), &[]);
+        rp.set_bind_group(0, material.texture_bind_group(), &[]);
         rp.set_bind_group(1, &self.colors.bind_group, &[]);
         rp.set_bind_group(2, &self.range_info.bind_group, &[]);
         rp.set_bind_group(3, &self.transforms.bind_group, &[]);

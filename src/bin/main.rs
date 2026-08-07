@@ -41,16 +41,18 @@ fn make_commands(commands: &mut RenderCommands, font_index: i32, font_size: f64)
         larger (but less massive) than the planet Mercury and is the only moon \
         in the Solar System that has a substantial atmosphere.[28]";
 
-    let layout_width = 1600.0;
+    let layout_width = 800.0;
 
     commands.paragraph(font_id, 40.0, 200.0, 100.0, &info, None);
     commands.paragraph(font_id, font_size, 200.0, 200.0, &text, Some(layout_width));
 
     let gray = Vec4::new(1.0, 1.0, 1.0, 0.3);
     let white = Vec4::new(1.0, 1.0, 1.0, 1.0);
+    let black = Vec4::new(0.0, 0.0, 0.0, 0.7);
 
     commands.rect(150.0, 100.0, 7.0, 1000.0, white);
     commands.rect(200.0, 180.0, layout_width, 7.0, gray);
+    commands.rect(0.0, 0.0, layout_width + 500.0, 4000.0, black);
 }
 
 fn make_world(renderer: &mut Renderer) -> World {
@@ -171,13 +173,11 @@ async fn run() {
 
     let mut keys_pressed = HashSet::new();
 
-    // renderer.window.set_cursor_mode(glfw::CursorMode::Hidden);
-
     let mut world = make_world(&mut renderer);
 
     let mut font_index = 0i32;
-    let mut font_size = 80.0f64;
-    let mut target_font_size = 72.0f64;
+    let mut font_size = 48.0f64;
+    let mut target_font_size = 48.0f64;
 
     let font_info: BTreeMap<usize, FontInfo> = renderer
         .fonts

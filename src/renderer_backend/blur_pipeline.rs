@@ -5,19 +5,19 @@ pub struct BlurPipeline {
     pipeline: RenderPipeline,
 }
 
-impl BlurPipeline {
-    pub fn new(device: &Device, config: &SurfaceConfiguration, queue: &Queue) -> Self {
-        let material_bind_group_layout;
-        {
-            let mut builder = BindGroupLayoutBuilder::new(&device);
-            builder.add_material();
-            material_bind_group_layout = builder.build("BlurPipeline Bind Group Layout");
-        }
+pub fn material_bind_group_layout(device: &Device, label: &str) -> BindGroupLayout {
+    let mut builder = BindGroupLayoutBuilder::new(&device);
+    builder.add_material();
+    builder.build(label)
+}
 
-        let mut builder = PipelineBuilder::new(&device);
+impl BlurPipeline {
+    pub fn new(device: &Device, config: &SurfaceConfiguration) -> Self {
+        let bgl = material_bind_group_layout(device, "BlurPipeline Bind Group Layout");
         let shader = Shader::from_path("src/shaders/blur_shader.wgsl");
 
-        builder.add_bind_group_layout(&material_bind_group_layout);
+        let mut builder = PipelineBuilder::new(&device);
+        builder.add_bind_group_layout(&bgl);
 
         let pipeline = builder.build_pipeline::<FullVertex>(
             "Single Texture Pipeline",

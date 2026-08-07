@@ -1,17 +1,22 @@
+use crate::renderer_backend::*;
+
 pub struct Texture {
+    pub bind_group: wgpu::BindGroup,
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
 }
 
 impl Texture {
-    pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float; // 1.
+    pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
     pub fn create_intermediate_texture(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
         label: &str,
     ) -> Self {
+        let bgl = material_bind_group_layout(device, label);
+
         let texture_descriptor = wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
                 width: config.width.max(1),
@@ -38,13 +43,16 @@ impl Texture {
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             mipmap_filter: wgpu::FilterMode::Nearest,
-            compare: Some(wgpu::CompareFunction::LessEqual),
-            lod_min_clamp: 0.0,
-            lod_max_clamp: 100.0,
             ..Default::default()
         });
 
+        let mut builder = BindGroupBuilder::new(device);
+        builder.set_layout(&bgl);
+        builder.add_material(&view, &sampler);
+        let bind_group = builder.build(label);
+
         Self {
+            bind_group,
             texture,
             view,
             sampler,
@@ -56,6 +64,8 @@ impl Texture {
         config: &wgpu::SurfaceConfiguration,
         label: &str,
     ) -> Self {
+        let bgl = BindGroupLayoutBuilder::new(&device).build(label);
+
         let size = wgpu::Extent3d {
             width: config.width.max(1),
             height: config.height.max(1),
@@ -87,10 +97,16 @@ impl Texture {
             ..Default::default()
         });
 
+        let mut builder = BindGroupBuilder::new(device);
+        builder.set_layout(&bgl);
+        // builder.add_material(&view, &sampler);
+        let bind_group = builder.build(label);
+
         Self {
             texture,
             view,
             sampler,
+            bind_group,
         }
     }
 }

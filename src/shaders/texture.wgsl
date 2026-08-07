@@ -72,8 +72,8 @@ fn fs_main(in: VertexShaderOut) -> FragmentShaderOut {
     out.color = mix(in.color, light_color, light_strength);
 
     let y = in.world_space_position.y;
-    let fade_out_color = vec4<f32>(0.2, 0.2, 0.7, 1.0);
-    let fade_out_magnitude = round(smoothstep(12.0, -12.0, y) * 20.0) / 20.0;
+    let fade_out_color = vec4<f32>(0.2, 0.2, 1.0, 1.0);
+    let fade_out_magnitude = round(smoothstep(4.0, -12.0, y) * 20.0) / 20.0;
 
     out.color = mix(out.color, fade_out_color, fade_out_magnitude);
 

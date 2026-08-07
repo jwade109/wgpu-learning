@@ -1,5 +1,5 @@
-@group(0) @binding(0) var inputTex: texture_2d<f32>;
-@group(0) @binding(1) var samp: sampler;
+@group(0) @binding(0) var texture: texture_2d<f32>;
+@group(0) @binding(1) var sample: sampler;
 
 struct Vertex {
     @builtin(instance_index) instance_index: u32,
@@ -22,43 +22,52 @@ fn vs_main(vertex: Vertex) -> VertexShaderOutput {
     return out;
 }
 
-@fragment
-fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
+fn do_blur(in: VertexShaderOutput) -> vec4<f32> {
 
     var color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
     // // Example simple 5-tap horizontal offset weights
     const weights = array<f32, 3>(0.227027, 0.316216, 0.070270);
-    // color += textureSample(inputTex, samp, in.tex_coord) * weights[0];
+    // color += textureSample(texture, sample, in.tex_coord) * weights[0];
 
     var uv = (in.tex_coord * 1.0) / 1.0;
     let off = 0.002;
-    let n = 20;
-    let w = 1.0 / f32(n * 4);
+    let n = 5;
+    let w = 1.0 / f32(n * 2);
 
     // uv.x = pow(uv.x, 2.0);
     // uv.y = pow(uv.y, 2.0);
 
-    // color = textureSample(inputTex, samp, uv);
+    // color = textureSample(texture, sample, uv);
 
     for (var i = 0; i < n; i += 1) {
         let offset = vec2<f32>(off * f32(i), 0.0);
-        color += textureSample(inputTex, samp, uv + offset) * w;
-        color += textureSample(inputTex, samp, uv - offset) * w;
+        color += textureSample(texture, sample, uv + offset) * w;
+        color += textureSample(texture, sample, uv - offset) * w;
     }
 
-    for (var i = 0; i < n; i += 1) {
-        let offset = vec2<f32>(0.0, off * f32(i));
-        color += textureSample(inputTex, samp, uv + offset) * w;
-        color += textureSample(inputTex, samp, uv - offset) * w;
-    }
-
-    // // for (var i = 0; i < 3; i += 1) {
-    // //     let offset = vec2<f32>(0.0, w * f32(i));
-    // //     color += textureSample(inputTex, samp, in.tex_coord + offset) * 0.1;
-    // //     color += textureSample(inputTex, samp, in.tex_coord - offset) * 0.1;
-    // // }
+    // for (var i = 0; i < n; i += 1) {
+    //     let offset = vec2<f32>(0.0, off * f32(i));
+    //     color += textureSample(texture, sample, uv + offset) * w;
+    //     color += textureSample(texture, sample, uv - offset) * w;
+    // }
 
     color.w = 1.0;
 
     return color;
+}
+
+fn pixelate(in: VertexShaderOutput, n: f32) -> vec4<f32> {
+    let uv = round(in.tex_coord * n) / n;
+    var color = textureSample(texture, sample, uv);
+
+    color.r = pow(color.r, 3.0);
+    color.g = pow(color.g, 3.0);
+    color.b = pow(color.b, 3.0);
+
+    return color;
+}
+
+@fragment
+fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
+    return pixelate(in, 200.0);
 }
