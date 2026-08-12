@@ -17,7 +17,7 @@ pub struct BufferResource {
     pub layout: BindGroupLayout,
 }
 
-fn make_array_resource(device: &Device, n_elements: usize, elem_size: usize) -> BufferResource {
+pub fn make_array_resource(device: &Device, n_elements: usize, elem_size: usize) -> BufferResource {
     let n_bytes = n_elements * elem_size;
     println!("Allocating buffer with {n_elements} * {elem_size} = {n_bytes} bytes");
 
@@ -147,10 +147,28 @@ impl TextPipeline {
         );
     }
 
+    pub fn assign_buffer_data(
+        &self,
+        queue: &Queue,
+        commands: &[CharCommand],
+        font: &FontInfo,
+        sx: f64,
+        sy: f64,
+    ) {
+        for (i, text) in commands.iter().enumerate() {
+            let range = font.get_sample_range(text.c).unwrap();
+            let transform =
+                screen_space_transform(text.x, text.y, text.width, text.height, sx, sy, 0.0);
+            self.set_range(queue, i, &range);
+            self.set_transform(queue, i, &transform);
+            self.set_color(queue, i, text.color)
+        }
+    }
+
     pub fn draw_text(&self, rp: &mut RenderPass, mesh: &Mesh, material: &SpriteMaterial, n: usize) {
         rp.set_pipeline(&self.pipeline);
 
-        rp.set_bind_group(0, material.texture_bind_group(), &[]);
+        rp.set_bind_group(0, &material.bind_group, &[]);
         rp.set_bind_group(1, &self.colors.bind_group, &[]);
         rp.set_bind_group(2, &self.range_info.bind_group, &[]);
         rp.set_bind_group(3, &self.transforms.bind_group, &[]);
@@ -162,7 +180,17 @@ impl TextPipeline {
     }
 }
 
-pub fn char_transform(x: f64, y: f64, width: f64, height: f64, sx: f64, sy: f64) -> Mat4 {
+pub fn screen_space_transform(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    sx: f64,
+    sy: f64,
+    angle: f64,
+) -> Mat4 {
+    let aspect_ratio = (sx / sy) as f32;
+
     let width_scale = width as f32 / sx as f32;
     let height_scale = height as f32 / sy as f32;
 

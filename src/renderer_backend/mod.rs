@@ -1,6 +1,7 @@
 mod bind_group;
 mod bind_group_layout;
 mod blur_pipeline;
+mod circle_pipeline;
 mod font;
 mod lava_lamp_pipeline;
 mod material;
@@ -20,6 +21,7 @@ mod vertex;
 pub use bind_group::*;
 pub use bind_group_layout::*;
 pub use blur_pipeline::*;
+pub use circle_pipeline::*;
 pub use font::*;
 pub use lava_lamp_pipeline::*;
 pub use material::*;

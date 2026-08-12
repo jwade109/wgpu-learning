@@ -2,9 +2,17 @@ use std::collections::{BTreeMap, HashSet};
 
 use glfw::{fail_on_errors, Action, ClientApiHint, Key, WindowHint};
 use glm::*;
+use rand::rngs::{SmallRng, StdRng};
+use rand::{Rng, RngExt, SeedableRng};
 use wgpu_learning::{model::*, renderer_backend::*};
 
-fn make_commands(commands: &mut RenderCommands, font_index: i32, font_size: f64) {
+fn make_commands(
+    commands: &mut RenderCommands,
+    font_index: i32,
+    font_size: f64,
+    time: f64,
+    pos: (f64, f64),
+) {
     let fonts = commands.fonts.keys().collect::<Vec<_>>();
     let font_id = *fonts[(font_index % fonts.len() as i32) as usize];
 
@@ -46,17 +54,62 @@ fn make_commands(commands: &mut RenderCommands, font_index: i32, font_size: f64)
     commands.paragraph(font_id, 40.0, 200.0, 100.0, &info, None);
     commands.paragraph(font_id, font_size, 200.0, 200.0, &text, Some(layout_width));
 
-    let gray = Vec4::new(1.0, 1.0, 1.0, 0.3);
+    // let gray = Vec4::new(1.0, 1.0, 1.0, 0.3);
     let white = Vec4::new(1.0, 1.0, 1.0, 1.0);
-    let black = Vec4::new(0.0, 0.0, 0.0, 0.7);
+    // let black = Vec4::new(0.0, 0.0, 0.0, 0.7);
 
-    commands.rect(150.0, 100.0, 7.0, 1000.0, white);
-    commands.rect(200.0, 180.0, layout_width, 7.0, gray);
-    commands.rect(0.0, 0.0, layout_width + 500.0, 4000.0, black);
+    commands.rect(150.0, 100.0, 7.0, 1000.0, 0.0, white);
+    // commands.rect(200.0, 180.0, layout_width, 7.0, 0.0, gray);
+    // commands.rect(0.0, 0.0, layout_width + 500.0, 4000.0, 0.0, black);
+
+    for x in (0..24).step_by(3) {
+        for y in (0..20).step_by(3) {
+            let r = x as f32 / 24.0;
+            let g = y as f32 / 20.0;
+            let size = 110.0;
+            let padding = 10.0;
+            let angle = x as f64 / 10.0 + y as f64 / 8.0 + time / 4.0;
+            let x = padding + x as f64 * (size + padding);
+            let y = padding + y as f64 * (size + padding);
+            let w = size * 3.0;
+            let h = size;
+            let color = Vector4::new(r.sqrt(), g.sqrt(), 0.0, 1.0);
+            // commands.rect(x, y, w, h, angle, color);
+            // commands.rect(x, y, w, h, 0.0, Vector4::new(1.0, 1.0, 1.0, 0.1));
+            // commands.rect(x, y, 6.0, 6.0, 0.0, Vector4::new(1.0, 0.3, 0.1, 1.0));
+        }
+    }
+
+    let mut rng = SmallRng::seed_from_u64(8525);
+
+    for _ in 0..200 {
+        let x = rng.random_range(0.0..2400.0);
+        let y = rng.random_range(0.0..1500.0);
+        // let rad = rng.random_range(30.0..200.0);
+
+        let r = rng.random_range(0.1f32..1.0).powi(3);
+        let g = rng.random_range(0.1f32..1.0).powi(3);
+        let b = rng.random_range(0.1f32..1.0).powi(3);
+
+        let anim = ((x + y + time) / 3.0).sin() * 0.5 + 0.5;
+
+        let d = ((x - pos.0).powi(2) + (y - pos.1).powi(2)).sqrt();
+
+        let rad = 40.0 + 16000.0 / (d + 400.0) * (anim * 6.0);
+
+        commands.circle(x, y, rad + 15.0, Vector4::new(0.0, 0.0, 0.0, 1.0));
+        commands.circle(x, y, rad + 7.0, Vector4::new(1.0, 1.0, 1.0, 1.0));
+        commands.circle(x, y, rad, Vector4::new(r, g, b, 1.0));
+    }
+
+    for x in (50..900).step_by(20) {
+        commands.circle(x as f64 + 10.0, 50.0, 3.0, Vector4::new(1.0, 0.7, 0.0, 1.0));
+        commands.circle(50.0, x as f64 + 10.0, 3.0, Vector4::new(1.0, 0.7, 0.0, 1.0));
+    }
 }
 
 fn make_world(renderer: &mut Renderer) -> World {
-    let quad_id = renderer.spawn_mesh(make_quad(&renderer.device, 1.0));
+    let quad_id = renderer.spawn_mesh(make_quad(&renderer.device));
     let cube_id = renderer.spawn_mesh(make_cube(&renderer.device, Vec4::new(1.0, 0.6, 0.6, 0.4)));
     let tetra_id = renderer.spawn_mesh(make_tetrahedron(&renderer.device));
     let nine_gon_id = renderer.spawn_mesh(make_n_gon(&renderer.device, 9));
@@ -194,7 +247,14 @@ async fn run() {
 
         let mut commands = RenderCommands::new(font_info.clone());
 
-        make_commands(&mut commands, font_index, font_size);
+        make_commands(
+            &mut commands,
+            font_index,
+            font_size,
+            world.time as f64,
+            renderer.window.get_cursor_pos(),
+        );
+
         let ctrls = make_camera_controls(&keys_pressed);
 
         world.update(16.67 / 1000.0, &ctrls);
@@ -222,12 +282,10 @@ async fn run() {
                     renderer.draw_wireframes ^= true;
                 }
                 glfw::WindowEvent::Key(Key::Right, _, Action::Press, _) => {
-                    renderer.pipeline_selector =
-                        enum_iterator::next_cycle(&renderer.pipeline_selector);
+                    renderer.view_selector = enum_iterator::next_cycle(&renderer.view_selector);
                 }
                 glfw::WindowEvent::Key(Key::Left, _, Action::Press, _) => {
-                    renderer.pipeline_selector =
-                        enum_iterator::previous_cycle(&renderer.pipeline_selector);
+                    renderer.view_selector = enum_iterator::previous_cycle(&renderer.view_selector);
                 }
 
                 glfw::WindowEvent::Key(Key::M, _, Action::Press, _) => {

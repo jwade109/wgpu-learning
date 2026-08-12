@@ -48,7 +48,7 @@ impl LavaLampPipeline {
     }
 
     pub fn draw(
-        &mut self,
+        &self,
         rp: &mut RenderPass,
         mesh: &Mesh,
         transform: &glm::Mat4,

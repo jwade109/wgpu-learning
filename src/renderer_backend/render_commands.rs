@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 pub enum RenderCommand {
     Char(CharCommand),
     Rect(RectCommand),
+    Circle(CircleCommand),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -14,6 +15,7 @@ pub struct RectCommand {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+    pub angle: f64,
     pub color: Vec4,
 }
 
@@ -25,6 +27,14 @@ pub struct CharCommand {
     pub height: f64,
     pub c: char,
     pub font: usize,
+    pub color: Vec4,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CircleCommand {
+    pub x: f64,
+    pub y: f64,
+    pub radius: f64,
     pub color: Vec4,
 }
 
@@ -45,12 +55,22 @@ impl RenderCommands {
         self.commands.iter()
     }
 
-    pub fn rect(&mut self, x: f64, y: f64, w: f64, h: f64, color: Vec4) {
+    pub fn rect(&mut self, x: f64, y: f64, w: f64, h: f64, angle: f64, color: Vec4) {
         self.commands.push(RenderCommand::Rect(RectCommand {
             x,
             y,
             width: w,
             height: h,
+            angle,
+            color,
+        }));
+    }
+
+    pub fn circle(&mut self, x: f64, y: f64, r: f64, color: Vec4) {
+        self.commands.push(RenderCommand::Circle(CircleCommand {
+            x,
+            y,
+            radius: r,
             color,
         }));
     }

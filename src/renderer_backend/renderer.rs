@@ -5,14 +5,15 @@ use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 
 #[derive(PartialEq, Eq, Sequence)]
-pub enum PipelineSelector {
+pub enum ViewSelector {
     Map,
+    Lava,
     World3d,
 }
 
 pub struct Renderer<'a> {
     pub paused: bool,
-    pub pipeline_selector: PipelineSelector,
+    pub view_selector: ViewSelector,
     pub draw_wireframes: bool,
     mouse_pos_smoothed: [f32; 2],
 
@@ -29,7 +30,9 @@ pub struct Renderer<'a> {
     standard_3d_pipeline: Standard3DPipeline,
     single_color_pipeline: SingleColorPipeline,
     text_pipeline: TextPipeline,
+    circle_pipeline: CirclePipeline,
 
+    standard_quad: Mesh,
     pub fonts: HashMap<usize, (FontInfo, SpriteMaterial)>,
     meshes: HashMap<usize, Mesh>,
     textures: HashMap<usize, SpriteMaterial>,
@@ -37,6 +40,7 @@ pub struct Renderer<'a> {
 
     depth_texture: Texture,
     intermediate_texture: Texture,
+    intermediate_texture_2: Texture,
 
     common_shader_info: SingleUBO,
 }
@@ -119,6 +123,8 @@ impl<'a> Renderer<'a> {
         let depth_texture = Texture::create_depth_texture(&device, &config, "depth_texture");
         let intermediate_texture =
             Texture::create_intermediate_texture(&device, &config, "intermediate_texture");
+        let intermediate_texture_2 =
+            Texture::create_intermediate_texture(&device, &config, "intermediate_texture_2");
 
         let time_etc_data_bind_group =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -165,6 +171,10 @@ impl<'a> Renderer<'a> {
 
         let blur_pipeline = BlurPipeline::new(&device, &config);
 
+        let standard_quad = make_quad(&device);
+
+        let circle_pipeline = CirclePipeline::new(&device, &config, &queue);
+
         Self {
             paused: false,
             mouse_pos_smoothed: [0.0, 0.0],
@@ -180,6 +190,7 @@ impl<'a> Renderer<'a> {
             standard_3d_pipeline,
             single_color_pipeline,
             text_pipeline,
+            circle_pipeline,
             fonts: HashMap::new(),
             meshes: HashMap::new(),
             textures: HashMap::new(),
@@ -188,11 +199,12 @@ impl<'a> Renderer<'a> {
                 buffer: uniform_buffer,
                 bind_group: uniform_bind_group,
             },
-
-            pipeline_selector: PipelineSelector::World3d,
+            standard_quad,
+            view_selector: ViewSelector::World3d,
             draw_wireframes: false,
             depth_texture,
             intermediate_texture,
+            intermediate_texture_2,
         }
     }
 
@@ -240,6 +252,11 @@ impl<'a> Renderer<'a> {
                 &self.config,
                 "intermediate_texture",
             );
+            self.intermediate_texture_2 = Texture::create_intermediate_texture(
+                &self.device,
+                &self.config,
+                "intermediate_texture_2",
+            );
         }
     }
 
@@ -248,6 +265,27 @@ impl<'a> Renderer<'a> {
             .instance
             .create_surface(self.window.render_context())
             .unwrap();
+    }
+
+    fn draw_lava(&self, view: &wgpu::TextureView) {
+        let mut command_encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
+
+        let transform = mat4_identity();
+        self._lava_lamp_pipeline.draw(
+            &mut rp,
+            &self.standard_quad,
+            &transform,
+            &self.common_shader_info,
+            &self.queue,
+            0,
+        );
+
+        drop(rp);
+        self.queue.submit(std::iter::once(command_encoder.finish()));
     }
 
     fn draw_map(&self, view: &wgpu::TextureView) {
@@ -259,8 +297,8 @@ impl<'a> Renderer<'a> {
 
         rp.set_pipeline(&self.map_pipeline);
         rp.set_bind_group(0, &self.common_shader_info.bind_group, &[]);
-        let mesh = self.meshes.get(&0).unwrap();
-        draw_mesh(&mut rp, mesh);
+
+        draw_mesh(&mut rp, &self.standard_quad);
 
         drop(rp);
         self.queue.submit(std::iter::once(command_encoder.finish()));
@@ -283,11 +321,7 @@ impl<'a> Renderer<'a> {
                 .upload_transform(i as u64, &matrix, &self.queue);
         }
 
-        rp.set_bind_group(
-            1,
-            self.textures.values().next().unwrap().texture_bind_group(),
-            &[],
-        );
+        rp.set_bind_group(1, &self.textures.values().next().unwrap().bind_group, &[]);
 
         for i in 0..world.quads.len() {
             let bg = self.standard_3d_pipeline.transforms().bind_group(i);
@@ -308,8 +342,35 @@ impl<'a> Renderer<'a> {
         self.queue.submit(std::iter::once(command_encoder.finish()));
     }
 
+    fn draw_circles(&self, view: &wgpu::TextureView, commands: &RenderCommands) {
+        let (sx, sy) = self.window.get_size();
+        let commands: Vec<CircleCommand> = commands
+            .commands()
+            .filter_map(|e: &RenderCommand| match e {
+                RenderCommand::Circle(c) => Some(*c),
+                _ => None,
+            })
+            .collect();
+
+        for chunk in commands.chunks(CirclePipeline::MAX_CHARS_PER_PASS) {
+            let mut command_encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+            let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
+
+            self.circle_pipeline
+                .assign_buffer_data(&self.queue, chunk, sx as f64, sy as f64);
+
+            self.circle_pipeline.draw_circles(&mut rp, chunk.len());
+
+            drop(rp);
+
+            self.queue.submit(std::iter::once(command_encoder.finish()));
+        }
+    }
+
     fn draw_rectangles(&self, view: &wgpu::TextureView, commands: &RenderCommands) {
-        let mesh = self.meshes.get(&0).unwrap();
         let (sx, sy) = self.window.get_size();
 
         let commands: Vec<RectCommand> = commands
@@ -327,10 +388,17 @@ impl<'a> Renderer<'a> {
 
             let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
 
-            let tf = char_transform(cmd.x, cmd.y, cmd.width, cmd.height, sx as f64, sy as f64);
+            let tf = screen_space_transform(
+                cmd.x, cmd.y, cmd.width, cmd.height, sx as f64, sy as f64, cmd.angle,
+            );
 
-            self.single_color_pipeline
-                .draw(&mut rp, mesh, &tf, &cmd.color, &self.queue);
+            self.single_color_pipeline.draw(
+                &mut rp,
+                &self.standard_quad,
+                &tf,
+                &cmd.color,
+                &self.queue,
+            );
 
             drop(rp);
 
@@ -339,7 +407,6 @@ impl<'a> Renderer<'a> {
     }
 
     fn draw_ui(&self, view: &wgpu::TextureView, commands: &RenderCommands) {
-        let mesh = self.meshes.get(&0).unwrap();
         let (sx, sy) = self.window.get_size();
 
         let commands: Vec<CharCommand> = commands
@@ -360,23 +427,10 @@ impl<'a> Renderer<'a> {
 
             let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
 
-            for (i, text) in chunk.iter().enumerate() {
-                let range = font.get_sample_range(text.c).unwrap();
-                let transform = char_transform(
-                    text.x,
-                    text.y,
-                    text.width,
-                    text.height,
-                    sx as f64,
-                    sy as f64,
-                );
-                self.text_pipeline.set_range(&self.queue, i, &range);
-                self.text_pipeline.set_transform(&self.queue, i, &transform);
-                self.text_pipeline.set_color(&self.queue, i, text.color)
-            }
-
             self.text_pipeline
-                .draw_text(&mut rp, mesh, material, chunk.len());
+                .assign_buffer_data(&self.queue, chunk, font, sx as f64, sy as f64);
+            self.text_pipeline
+                .draw_text(&mut rp, &self.standard_quad, material, chunk.len());
 
             drop(rp);
 
@@ -384,14 +438,10 @@ impl<'a> Renderer<'a> {
         }
     }
 
-    fn update_projection(&mut self, world: &World) {
+    pub fn update(&mut self, world: &World) {
         let view_proj = world.camera.to_projection_matrix(self.window);
         self.standard_3d_pipeline
             .upload_camera_matrix(&view_proj, &self.queue);
-    }
-
-    pub fn update(&mut self, world: &mut World) {
-        self.update_projection(world);
 
         let mouse_pos = self.window.get_cursor_pos();
 
@@ -450,8 +500,6 @@ impl<'a> Renderer<'a> {
     }
 
     fn blur_pass(&self, incoming: &Texture, outgoing: &wgpu::TextureView) {
-        let mesh = self.meshes.get(&0).unwrap();
-
         let mut command_encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -459,7 +507,7 @@ impl<'a> Renderer<'a> {
         let mut rp = self.get_render_pass(&mut command_encoder, None, &outgoing);
 
         self.blur_pipeline
-            .blur_pass(&mut rp, mesh, &incoming.bind_group);
+            .blur_pass(&mut rp, &self.standard_quad, &incoming.bind_group);
 
         drop(rp);
         self.queue.submit(std::iter::once(command_encoder.finish()));
@@ -493,17 +541,22 @@ impl<'a> Renderer<'a> {
         self.standard_3d_pipeline
             .set_draw_wireframes(self.draw_wireframes);
 
-        match self.pipeline_selector {
-            PipelineSelector::Map => {
+        match self.view_selector {
+            ViewSelector::Map => {
                 self.draw_map(&view);
             }
-            PipelineSelector::World3d => {
+            ViewSelector::Lava => {
+                self.draw_lava(&view);
+            }
+            ViewSelector::World3d => {
                 if self.draw_wireframes {
                     self.draw_3d(&world, &view);
+                    // self.blur_pass(&self.intermediate_texture_2, &view);
                 } else {
                     self.draw_3d(&world, &self.intermediate_texture.view);
-                    self.blur_pass(&self.intermediate_texture, &view);
-                    self.draw_rectangles(&view, commands);
+                    // self.draw_rectangles(&view, commands);
+                    self.draw_circles(&view, commands);
+                    // self.blur_pass(&self.intermediate_texture, &view);
                     self.draw_ui(&view, commands);
                 }
             }

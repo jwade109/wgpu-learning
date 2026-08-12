@@ -69,7 +69,8 @@ fn mesh_from_vi<T: Vertex>(device: &wgpu::Device, vertices: &[T], indices: &[u16
     }
 }
 
-pub fn make_quad(device: &wgpu::Device, size: f32) -> Mesh {
+pub fn make_quad(device: &wgpu::Device) -> Mesh {
+    let size = 1.0;
     let vertices: [FullVertex; 4] = [
         FullVertex::new(
             Vec3::new(-size, -size, 0.0),
@@ -112,7 +113,7 @@ pub fn make_n_gon(device: &wgpu::Device, n: usize) -> Mesh {
             let g = a.cos() * 0.5 + 0.5;
             let b = (a * 0.5).sin() * 0.5 + 0.5;
             let color = Vec4::new(r, g, b, 1.0);
-            let tx = Vec2::new(x, y);
+            let tx = Vec2::new(x * 0.5 + 0.5, y * 0.5 + 0.5);
             FullVertex::new(pos, color, tx)
         })
         .collect::<Vec<_>>();
@@ -251,9 +252,9 @@ pub fn mat4_identity() -> glm::Mat4 {
     mat4_diagonal(1.0, 1.0, 1.0, 1.0)
 }
 
-pub fn mat4_z_rotation(alpha: f32) -> glm::Mat4 {
-    let c = alpha.cos();
-    let s = alpha.sin();
+pub fn mat4_z_rotation(alpha: f64) -> glm::Mat4 {
+    let c = alpha.cos() as f32;
+    let s = alpha.sin() as f32;
 
     let c0 = glm::Vec4::new(c, s, 0.0, 0.0);
     let c1 = glm::Vec4::new(-s, c, 0.0, 0.0);

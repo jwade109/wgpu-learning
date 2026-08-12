@@ -58,16 +58,11 @@ fn do_blur(in: VertexShaderOutput) -> vec4<f32> {
 
 fn pixelate(in: VertexShaderOutput, n: f32) -> vec4<f32> {
     let uv = round(in.tex_coord * n) / n;
-    var color = textureSample(texture, sample, uv);
-
-    color.r = pow(color.r, 3.0);
-    color.g = pow(color.g, 3.0);
-    color.b = pow(color.b, 3.0);
-
-    return color;
+    return textureSample(texture, sample, uv);
 }
 
 @fragment
 fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
     return pixelate(in, 200.0);
+    // return do_blur(in);
 }

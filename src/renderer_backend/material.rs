@@ -4,9 +4,12 @@ use image::GenericImageView;
 #[derive(Debug)]
 pub struct SpriteMaterial {
     size: (u32, u32),
-    bind_group: wgpu::BindGroup,
+    pub bind_group: wgpu::BindGroup,
+    #[allow(unused)]
     texture: wgpu::Texture,
+    #[allow(unused)]
     view: wgpu::TextureView,
+    #[allow(unused)]
     sampler: wgpu::Sampler,
 }
 
@@ -86,10 +89,6 @@ impl SpriteMaterial {
             view,
             sampler,
         }
-    }
-
-    pub fn texture_bind_group(&self) -> &wgpu::BindGroup {
-        &self.bind_group
     }
 
     pub fn get_sample_range(&self) -> TextureSampleRange {
