@@ -1,12 +1,15 @@
 use crate::renderer_backend::FontInfo;
-use glm::Vec4;
+use glm::{Vec4, Vector2};
 use std::collections::BTreeMap;
+
+pub type Vec2d = glm::Vector2<f64>;
 
 #[derive(Debug, Clone, Copy)]
 pub enum RenderCommand {
     Char(CharCommand),
     Rect(RectCommand),
     Circle(CircleCommand),
+    Line(LineCommand),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -38,6 +41,14 @@ pub struct CircleCommand {
     pub color: Vec4,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct LineCommand {
+    pub start: Vec2d,
+    pub end: Vec2d,
+    pub thickness: f64,
+    pub color: Vec4,
+}
+
 pub struct RenderCommands {
     pub fonts: BTreeMap<usize, FontInfo>,
     commands: Vec<RenderCommand>,
@@ -66,13 +77,18 @@ impl RenderCommands {
         }));
     }
 
-    pub fn circle(&mut self, x: f64, y: f64, r: f64, color: Vec4) {
-        self.commands.push(RenderCommand::Circle(CircleCommand {
-            x,
-            y,
-            radius: r,
+    pub fn circle<'a>(&'a mut self, x: f64, y: f64) -> CircleBuilder<'a> {
+        let builder = CircleBuilder::new(self, x, y);
+        builder
+    }
+
+    pub fn line(&mut self, start: Vec2d, end: Vec2d, color: Vec4, t: f64) {
+        self.commands.push(RenderCommand::Line(LineCommand {
+            start,
+            end,
+            thickness: t,
             color,
-        }));
+        }))
     }
 
     pub fn char(&mut self, x: f64, y: f64, w: f64, h: f64, c: char, font: usize, color: Vec4) {
@@ -146,5 +162,52 @@ impl RenderCommands {
                 }
             }
         }
+    }
+}
+
+pub struct CircleBuilder<'a> {
+    commands: &'a mut RenderCommands,
+    x: f64,
+    y: f64,
+    r: f64,
+    color: Vec4,
+}
+
+impl<'a> CircleBuilder<'a> {
+    fn new(commands: &'a mut RenderCommands, x: f64, y: f64) -> Self {
+        Self {
+            commands,
+            x,
+            y,
+            r: 50.0,
+            color: Vec4::new(0.0, 0.3, 1.0, 0.8),
+        }
+    }
+
+    pub fn radius(&mut self, radius: f64) -> &mut Self {
+        self.r = radius;
+        self
+    }
+
+    pub fn diameter(&mut self, diameter: f64) -> &mut Self {
+        self.r = diameter / 2.0;
+        self
+    }
+
+    pub fn color(&mut self, color: Vec4) -> &mut Self {
+        self.color = color;
+        self
+    }
+}
+
+impl<'a> Drop for CircleBuilder<'a> {
+    fn drop(&mut self) {
+        let circle = CircleCommand {
+            x: self.x,
+            y: self.y,
+            radius: self.r,
+            color: self.color,
+        };
+        self.commands.commands.push(RenderCommand::Circle(circle));
     }
 }

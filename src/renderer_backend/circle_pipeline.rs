@@ -74,7 +74,8 @@ impl CirclePipeline {
         for (i, cmd) in commands.iter().enumerate() {
             let ul_x = cmd.x - cmd.radius;
             let ul_y = cmd.y - cmd.radius;
-            let transform = screen_space_transform(ul_x, ul_y, cmd.radius * 2.0, cmd.radius * 2.0, sx, sy, 0.0);
+            let transform =
+                screen_space_transform(ul_x, ul_y, cmd.radius * 2.0, cmd.radius * 2.0, sx, sy, 0.0);
             self.set_transform(queue, i, &transform);
             self.set_color(queue, i, cmd.color);
             self.set_radius(queue, i, cmd.radius as f32);

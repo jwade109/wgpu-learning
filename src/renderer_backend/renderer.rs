@@ -31,6 +31,7 @@ pub struct Renderer<'a> {
     single_color_pipeline: SingleColorPipeline,
     text_pipeline: TextPipeline,
     circle_pipeline: CirclePipeline,
+    line_pipeline: LinePipeline,
 
     standard_quad: Mesh,
     pub fonts: HashMap<usize, (FontInfo, SpriteMaterial)>,
@@ -175,6 +176,8 @@ impl<'a> Renderer<'a> {
 
         let circle_pipeline = CirclePipeline::new(&device, &config, &queue);
 
+        let line_pipeline = LinePipeline::new(&device, &config, &queue);
+
         Self {
             paused: false,
             mouse_pos_smoothed: [0.0, 0.0],
@@ -191,6 +194,7 @@ impl<'a> Renderer<'a> {
             single_color_pipeline,
             text_pipeline,
             circle_pipeline,
+            line_pipeline,
             fonts: HashMap::new(),
             meshes: HashMap::new(),
             textures: HashMap::new(),
@@ -363,6 +367,34 @@ impl<'a> Renderer<'a> {
                 .assign_buffer_data(&self.queue, chunk, sx as f64, sy as f64);
 
             self.circle_pipeline.draw_circles(&mut rp, chunk.len());
+
+            drop(rp);
+
+            self.queue.submit(std::iter::once(command_encoder.finish()));
+        }
+    }
+
+    fn draw_lines(&self, view: &wgpu::TextureView, commands: &RenderCommands) {
+        let (sx, sy) = self.window.get_size();
+        let commands: Vec<LineCommand> = commands
+            .commands()
+            .filter_map(|e: &RenderCommand| match e {
+                RenderCommand::Line(c) => Some(*c),
+                _ => None,
+            })
+            .collect();
+
+        for chunk in commands.chunks(LinePipeline::MAX_LINES_PER_PASS) {
+            let mut command_encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+            let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
+
+            self.line_pipeline
+                .assign_buffer_data(&self.queue, chunk, sx as f64, sy as f64);
+
+            self.line_pipeline.draw_lines(&mut rp, chunk.len());
 
             drop(rp);
 
@@ -555,9 +587,10 @@ impl<'a> Renderer<'a> {
                 } else {
                     self.draw_3d(&world, &self.intermediate_texture.view);
                     // self.draw_rectangles(&view, commands);
+                    self.blur_pass(&self.intermediate_texture, &view);
+                    self.draw_lines(&view, commands);
                     self.draw_circles(&view, commands);
-                    // self.blur_pass(&self.intermediate_texture, &view);
-                    self.draw_ui(&view, commands);
+                    // self.draw_ui(&view, commands);
                 }
             }
         }

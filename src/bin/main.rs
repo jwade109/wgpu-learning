@@ -82,9 +82,9 @@ fn make_commands(
 
     let mut rng = SmallRng::seed_from_u64(8525);
 
-    for _ in 0..200 {
-        let x = rng.random_range(0.0..2400.0);
-        let y = rng.random_range(0.0..1500.0);
+    for _ in 0..500 {
+        let x = rng.random_range(100.0..2400.0);
+        let y = rng.random_range(100.0..1500.0);
         // let rad = rng.random_range(30.0..200.0);
 
         let r = rng.random_range(0.1f32..1.0).powi(3);
@@ -97,14 +97,70 @@ fn make_commands(
 
         let rad = 40.0 + 16000.0 / (d + 400.0) * (anim * 6.0);
 
-        commands.circle(x, y, rad + 15.0, Vector4::new(0.0, 0.0, 0.0, 1.0));
-        commands.circle(x, y, rad + 7.0, Vector4::new(1.0, 1.0, 1.0, 1.0));
-        commands.circle(x, y, rad, Vector4::new(r, g, b, 1.0));
+        // commands
+        //     .circle(x, y)
+        //     .radius(rad + 15.0)
+        //     .color(Vector4::new(0.0, 0.0, 0.0, 1.0));
+        // commands
+        //     .circle(x, y)
+        //     .radius(rad + 7.0)
+        //     .color(Vector4::new(1.0, 1.0, 1.0, 1.0));
+        // commands
+        //     .circle(x, y)
+        //     .radius(rad)
+        //     .color(Vector4::new(r, g, b, 1.0));
     }
 
     for x in (50..900).step_by(20) {
-        commands.circle(x as f64 + 10.0, 50.0, 3.0, Vector4::new(1.0, 0.7, 0.0, 1.0));
-        commands.circle(50.0, x as f64 + 10.0, 3.0, Vector4::new(1.0, 0.7, 0.0, 1.0));
+        commands
+            .circle(x as f64 + 10.0, 50.0)
+            .radius(3.0)
+            .color(Vector4::new(1.0, 0.7, 0.0, 1.0));
+        commands
+            .circle(50.0, x as f64 + 10.0)
+            .radius(3.0)
+            .color(Vector4::new(1.0, 0.7, 0.0, 1.0));
+    }
+
+    commands.line(
+        Vec2d::new(100.0, 200.0),
+        Vec2d::new(700.0, 400.0),
+        Vec4::new(0.3, 0.7, 1.0, 1.0),
+        12.0,
+    );
+
+    commands
+        .circle(100.0, 200.0)
+        .radius(6.0)
+        .color(Vec4::new(0.3, 0.3, 0.3, 1.0));
+
+    for _ in 0..50 {
+        let x1 = rng.random_range(100.0..2400.0);
+        let y1 = rng.random_range(100.0..1500.0);
+        let x2 = rng.random_range(100.0..2400.0);
+        let y2 = rng.random_range(100.0..1500.0);
+
+        let r = rng.random_range(0.1f32..1.0).powi(2);
+        let g = rng.random_range(0.1f32..1.0).powi(2);
+        let b = rng.random_range(0.1f32..1.0).powi(2);
+
+        let thickness = rng.random_range(20.0..170.0);
+
+        let color = Vector4::new(r, g, b, 1.0);
+
+        commands.line(Vec2d::new(x1, y1), Vec2d::new(x2, y2), color, thickness);
+
+        commands.line(
+            Vec2d::new(x1, y1),
+            Vec2d::new(x2, y2),
+            Vector4::new(1.0, 0.2, 0.2, 1.0),
+            12.0,
+        );
+
+        commands.circle(x1, y1).diameter(thickness).color(color);
+        commands.circle(x2, y2).diameter(thickness).color(color);
+        commands.circle(x1, y1).diameter(12.0).color(white);
+        commands.circle(x2, y2).diameter(12.0).color(white);
     }
 }
 

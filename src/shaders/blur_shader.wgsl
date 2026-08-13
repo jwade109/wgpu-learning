@@ -61,8 +61,14 @@ fn pixelate(in: VertexShaderOutput, n: f32) -> vec4<f32> {
     return textureSample(texture, sample, uv);
 }
 
+fn desaturate(in: VertexShaderOutput) -> vec4<f32> {
+    let color = textureSample(texture, sample, in.tex_coord);
+    return vec4<f32>(color.xyz * 0.3, color.a);
+}
+
 @fragment
 fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
-    return pixelate(in, 200.0);
+    return desaturate(in);
+    // return pixelate(in, 200.0);
     // return do_blur(in);
 }
