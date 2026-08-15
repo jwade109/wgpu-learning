@@ -225,7 +225,7 @@ pub fn make_rough_ground_plane(device: &wgpu::Device, center: Vec2, n_quads: u16
             let z = zi as f32 * quad_width_y - world_width / 2.0;
             let y = eval_height(center.x + x, center.y + z);
             let position = Vec3::new(x as f32, y as f32, z as f32);
-            let color = Vec4::new(0.3, 1.0, 0.2, 1.0);
+            let color = Vec4::new(0.2, 0.6, 1.0, 1.0);
             let tex_coord = Vec2::new(0.0, 0.0);
             let v = FullVertex::new(position, color, tex_coord);
             vertices.push(v);

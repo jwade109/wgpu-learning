@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
+use std::time::Instant;
 
-use glfw::{fail_on_errors, Action, ClientApiHint, Key, WindowHint};
+use glfw::{fail_on_errors, Action, ClientApiHint, Key, MouseButton, WindowHint};
 use glm::*;
 use rand::rngs::{SmallRng, StdRng};
 use rand::{Rng, RngExt, SeedableRng};
@@ -11,7 +12,9 @@ fn make_commands(
     font_index: i32,
     font_size: f64,
     time: f64,
+    random_seed: u64,
     pos: (f64, f64),
+    screen: (f64, f64),
 ) {
     let fonts = commands.fonts.keys().collect::<Vec<_>>();
     let font_id = *fonts[(font_index % fonts.len() as i32) as usize];
@@ -56,7 +59,7 @@ fn make_commands(
 
     // let gray = Vec4::new(1.0, 1.0, 1.0, 0.3);
     let white = Vec4::new(1.0, 1.0, 1.0, 1.0);
-    // let black = Vec4::new(0.0, 0.0, 0.0, 0.7);
+    let black = Vec4::new(0.0, 0.0, 0.0, 1.0);
 
     commands.rect(150.0, 100.0, 7.0, 1000.0, 0.0, white);
     // commands.rect(200.0, 180.0, layout_width, 7.0, 0.0, gray);
@@ -74,17 +77,17 @@ fn make_commands(
             let w = size * 3.0;
             let h = size;
             let color = Vector4::new(r.sqrt(), g.sqrt(), 0.0, 1.0);
-            // commands.rect(x, y, w, h, angle, color);
-            // commands.rect(x, y, w, h, 0.0, Vector4::new(1.0, 1.0, 1.0, 0.1));
-            // commands.rect(x, y, 6.0, 6.0, 0.0, Vector4::new(1.0, 0.3, 0.1, 1.0));
+            commands.rect(x, y, w, h, angle, color);
+            commands.rect(x, y, w, h, 0.0, Vector4::new(1.0, 1.0, 1.0, 0.1));
+            commands.rect(x, y, 6.0, 6.0, 0.0, Vector4::new(1.0, 0.3, 0.1, 1.0));
         }
     }
 
-    let mut rng = SmallRng::seed_from_u64(8525);
+    let mut rng = SmallRng::seed_from_u64(random_seed);
 
-    for _ in 0..500 {
-        let x = rng.random_range(100.0..2400.0);
-        let y = rng.random_range(100.0..1500.0);
+    for _ in 0..20 {
+        let x = rng.random_range(100.0..screen.0 - 100.0);
+        let y = rng.random_range(100.0..screen.1 - 100.0);
         // let rad = rng.random_range(30.0..200.0);
 
         let r = rng.random_range(0.1f32..1.0).powi(3);
@@ -97,18 +100,18 @@ fn make_commands(
 
         let rad = 40.0 + 16000.0 / (d + 400.0) * (anim * 6.0);
 
-        // commands
-        //     .circle(x, y)
-        //     .radius(rad + 15.0)
-        //     .color(Vector4::new(0.0, 0.0, 0.0, 1.0));
-        // commands
-        //     .circle(x, y)
-        //     .radius(rad + 7.0)
-        //     .color(Vector4::new(1.0, 1.0, 1.0, 1.0));
-        // commands
-        //     .circle(x, y)
-        //     .radius(rad)
-        //     .color(Vector4::new(r, g, b, 1.0));
+        commands
+            .circle(x, y)
+            .radius(rad + 15.0)
+            .color(Vector4::new(0.0, 0.0, 0.0, 1.0));
+        commands
+            .circle(x, y)
+            .radius(rad + 7.0)
+            .color(Vector4::new(1.0, 1.0, 1.0, 1.0));
+        commands
+            .circle(x, y)
+            .radius(rad)
+            .color(Vector4::new(r, g, b, 1.0));
     }
 
     for x in (50..900).step_by(20) {
@@ -129,38 +132,65 @@ fn make_commands(
         12.0,
     );
 
-    commands
-        .circle(100.0, 200.0)
-        .radius(6.0)
-        .color(Vec4::new(0.3, 0.3, 0.3, 1.0));
+    // commands
+    //     .circle(100.0, 200.0)
+    //     .radius(6.0)
+    //     .color(Vec4::new(0.3, 0.3, 0.3, 1.0));
 
-    for _ in 0..50 {
-        let x1 = rng.random_range(100.0..2400.0);
-        let y1 = rng.random_range(100.0..1500.0);
-        let x2 = rng.random_range(100.0..2400.0);
-        let y2 = rng.random_range(100.0..1500.0);
+    for _ in 0..200 {
+        let x1 = rng.random_range(100.0..screen.0 - 100.0);
+        let y1 = rng.random_range(100.0..screen.1 - 100.0);
+        let x2 = rng.random_range(100.0..screen.0 - 100.0);
+        let y2 = rng.random_range(100.0..screen.1 - 100.0);
 
-        let r = rng.random_range(0.1f32..1.0).powi(2);
-        let g = rng.random_range(0.1f32..1.0).powi(2);
-        let b = rng.random_range(0.1f32..1.0).powi(2);
+        let r = rng.random_range(0.1f32..1.0).powi(3);
+        let g = rng.random_range(0.1f32..1.0).powi(3);
+        let b = rng.random_range(0.1f32..1.0).powi(3);
 
-        let thickness = rng.random_range(20.0..170.0);
+        let thickness = rng.random_range(4.0..20.0);
 
         let color = Vector4::new(r, g, b, 1.0);
 
-        commands.line(Vec2d::new(x1, y1), Vec2d::new(x2, y2), color, thickness);
-
+        // commands.line(
+        //     Vec2d::new(x1, y1),
+        //     Vec2d::new(x2, y2),
+        //     black,
+        //     thickness + 16.0,
+        // );
         commands.line(
             Vec2d::new(x1, y1),
             Vec2d::new(x2, y2),
-            Vector4::new(1.0, 0.2, 0.2, 1.0),
-            12.0,
+            black,
+            thickness + 8.0,
         );
+        commands.line(Vec2d::new(x1, y1), Vec2d::new(x2, y2), color, thickness);
 
-        commands.circle(x1, y1).diameter(thickness).color(color);
-        commands.circle(x2, y2).diameter(thickness).color(color);
-        commands.circle(x1, y1).diameter(12.0).color(white);
-        commands.circle(x2, y2).diameter(12.0).color(white);
+        // commands.line(
+        //     Vec2d::new(x1, y1),
+        //     Vec2d::new(x2, y2),
+        //     Vector4::new(1.0, 0.2, 0.2, 1.0),
+        //     12.0,
+        // );
+
+        // commands.circle(x1, y1).diameter(thickness).color(color);
+        // commands.circle(x2, y2).diameter(thickness).color(color);
+        // commands.circle(x1, y1).diameter(12.0).color(white);
+        // commands.circle(x2, y2).diameter(12.0).color(white);
+    }
+
+    let vals: Vec<_> = (100..=2400)
+        .step_by(15)
+        .map(|x| {
+            let y = (time + x as f64 / 100.0).sin() * 100.0 + 600.0;
+            Vec2d::new(x as f64, y)
+        })
+        .collect();
+
+    for p in vals.windows(2) {
+        commands.line(p[0], p[1], black, 12.0);
+    }
+    for p in vals.windows(2) {
+        commands.line(p[0], p[1], white, 6.0);
     }
 }
 
@@ -294,6 +324,9 @@ async fn run() {
         .map(|(id, (font, _sprite))| (*id, font.clone()))
         .collect();
 
+    let start = Instant::now();
+    let mut random_seed = 0;
+
     while !renderer.window.should_close() {
         glfw.poll_events();
 
@@ -303,12 +336,18 @@ async fn run() {
 
         let mut commands = RenderCommands::new(font_info.clone());
 
+        let now = Instant::now();
+
+        let size = renderer.window.get_size();
+
         make_commands(
             &mut commands,
             font_index,
             font_size,
-            world.time as f64,
+            (now - start).as_secs_f64(),
+            random_seed,
             renderer.window.get_cursor_pos(),
+            (size.0 as f64, size.1 as f64),
         );
 
         let ctrls = make_camera_controls(&keys_pressed);
@@ -327,6 +366,10 @@ async fn run() {
             }
 
             match event {
+                glfw::WindowEvent::MouseButton(MouseButton::Button1, Action::Press, _) => {
+                    random_seed += 1;
+                }
+
                 //Hit escape
                 glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
                     renderer.window.set_should_close(true)

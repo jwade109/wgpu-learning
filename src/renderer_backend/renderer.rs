@@ -308,12 +308,24 @@ impl<'a> Renderer<'a> {
         self.queue.submit(std::iter::once(command_encoder.finish()));
     }
 
+    fn clear(&self, view: &wgpu::TextureView, color: wgpu::Color) {
+        let mut command_encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        let mut rp = self.get_render_pass(&mut command_encoder, Some(color), &view);
+
+        drop(rp);
+
+        self.queue.submit(std::iter::once(command_encoder.finish()));
+    }
+
     fn draw_3d(&self, world: &World, view: &wgpu::TextureView) {
         let mut command_encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        let mut rp = self.get_render_pass(&mut command_encoder, Some(wgpu::Color::BLACK), &view);
+        let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
 
         rp.set_pipeline(self.standard_3d_pipeline.pipeline());
         rp.set_bind_group(2, &self.common_shader_info.bind_group, &[]);
@@ -585,11 +597,20 @@ impl<'a> Renderer<'a> {
                     self.draw_3d(&world, &view);
                     // self.blur_pass(&self.intermediate_texture_2, &view);
                 } else {
-                    self.draw_3d(&world, &self.intermediate_texture.view);
+                    self.clear(
+                        &view,
+                        wgpu::Color {
+                            r: 0.4,
+                            g: 0.4,
+                            b: 0.4,
+                            a: 1.0,
+                        },
+                    );
+                    self.draw_3d(&world, &view);
                     // self.draw_rectangles(&view, commands);
-                    self.blur_pass(&self.intermediate_texture, &view);
-                    self.draw_lines(&view, commands);
-                    self.draw_circles(&view, commands);
+                    // self.blur_pass(&self.intermediate_texture, &view);
+                    // self.draw_lines(&view, commands);
+                    // self.draw_circles(&view, commands);
                     // self.draw_ui(&view, commands);
                 }
             }

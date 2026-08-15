@@ -72,14 +72,32 @@ fn vs_main(vertex: Vertex) -> VertexShaderOutput {
     return out;
 }
 
-fn sdf_box(p: vec2<f32>, size: vec2<f32>) -> f32 {
-    let d = abs(p) - size;
-    return length(max(d.x, 0.0)) + min(max(d.x, d.y), 0.0);
+fn sdf_segment(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
+    let pa = p - a;
+    let ba = b - a;
+    let h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * h);
 }
 
 @fragment
 fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
     var data = line_data[in.instance_index];
+
+    data.color.r = pow(data.color.r, 2.2);
+    data.color.g = pow(data.color.g, 2.2);
+    data.color.b = pow(data.color.b, 2.2);
+
+    let t = data.thickness / 2.0;
+
+    let a = vec2<f32>(t, t);
+    let b = vec2<f32>(t, in.length - t);
+
+    let p = in.uv * vec2<f32>(in.width, in.length);
+
+    let d = sdf_segment(p, a, b);
+
+    let alpha = 1.0 - smoothstep(t - 2.0, t, d);
+    data.color.a *= alpha;
 
     // let x = in.uv.x * in.width;
     // let y = in.uv.y * in.length;
@@ -93,5 +111,5 @@ fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
     // let alpha = 1.0 - smoothstep(-3.0, -1.0, dist);
     // data.color.a *= alpha;
 
-    return vec4<f32>(in.uv, 0.0, 1.0);
+    return data.color; // vec4<f32>(in.uv, 0.0, 1.0);
 }
