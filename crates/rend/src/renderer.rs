@@ -107,7 +107,7 @@ impl<'a> Renderer<'a> {
 struct Pipelines {
     lava_lamp_pipeline: LavaLampPipeline,
     blur_pipeline: BlurPipeline,
-    map_pipeline: wgpu::RenderPipeline,
+    shadow_pipeline: ShadowPipeline,
     standard_3d_pipeline: Standard3DPipeline,
     single_color_pipeline: SingleColorPipeline,
     text_pipeline: TextPipeline,
@@ -128,6 +128,7 @@ pub struct RenderState<'a> {
     textures: HashMap<usize, SpriteMaterial>,
     next_resource_id: usize,
 
+    invincible: SpriteMaterial,
     depth_texture: Texture,
     im_tex_1: Texture,
     im_tex_2: Texture,
@@ -153,6 +154,8 @@ impl<'a> RenderState<'a> {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+
+        let invincible = SpriteMaterial::load("img/invincible.jpg", &renderer);
 
         let depth_texture = Texture::depth_texture(&renderer, "depth_texture");
         let im_tex_1 = Texture::blank_texture(&renderer, "im_tex_1");
@@ -200,18 +203,7 @@ impl<'a> RenderState<'a> {
             &renderer.config,
         );
 
-        let map_pipeline = {
-            let mut builder = PipelineBuilder::new(&renderer.device);
-            let shader = Shader::from_path("crates/rend/shaders/map.wgsl");
-            builder.add_bind_group_layout(&time_etc_data_bind_group);
-            builder.build_pipeline::<FullVertex>(
-                "Map Pipeline",
-                &shader,
-                renderer.config.format,
-                true,
-                true,
-            )
-        };
+        let shadow_pipeline = ShadowPipeline::new(&renderer);
 
         Self {
             renderer,
@@ -219,7 +211,7 @@ impl<'a> RenderState<'a> {
             pipelines: Pipelines {
                 lava_lamp_pipeline,
                 blur_pipeline,
-                map_pipeline,
+                shadow_pipeline,
                 standard_3d_pipeline,
                 single_color_pipeline,
                 text_pipeline,
@@ -235,6 +227,7 @@ impl<'a> RenderState<'a> {
                 bind_group: uniform_bind_group,
             },
             standard_quad,
+            invincible,
             depth_texture,
             im_tex_1,
             im_tex_2,
@@ -331,7 +324,7 @@ impl<'a> RenderState<'a> {
             .submit(std::iter::once(command_encoder.finish()));
     }
 
-    fn draw_map(&self, view: &wgpu::TextureView) {
+    fn draw_shadows(&self, incoming: &wgpu::BindGroup, view: &wgpu::TextureView, time: f32) {
         let mut command_encoder = self
             .renderer
             .device
@@ -339,10 +332,23 @@ impl<'a> RenderState<'a> {
 
         let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
 
-        rp.set_pipeline(&self.pipelines.map_pipeline);
-        rp.set_bind_group(0, &self.common_shader_info.bind_group, &[]);
+        let mouse_pos = self.window.get_cursor_pos();
 
-        draw_mesh(&mut rp, &self.standard_quad);
+        let shader_params = ShaderParams {
+            mouse: (mouse_pos.0 as f32, mouse_pos.1 as f32),
+            time,
+            resolution: (
+                self.window.get_size().0 as f32,
+                self.window.get_size().1 as f32,
+            ),
+        };
+
+        self.pipelines.shadow_pipeline.shadow_pass(
+            &mut rp,
+            &self.renderer.queue,
+            &shader_params,
+            incoming,
+        );
 
         drop(rp);
         self.renderer
@@ -651,9 +657,11 @@ impl<'a> RenderState<'a> {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
+        self.clear(&view, Color::rgb(117, 186, 255, 1.0));
+
         match view_selector {
             ViewSelector::Map => {
-                self.draw_map(&view);
+                self.draw_shadows(&self.invincible.bind_group, &view, time);
             }
             ViewSelector::Lava => {
                 self.draw_lava(&view, time);
@@ -664,18 +672,17 @@ impl<'a> RenderState<'a> {
                         .standard_3d_pipeline
                         .set_draw_wireframes(true);
                     self.clear(&view, Color::BLACK);
-                    self.draw_3d(meshes, &view);
                 } else {
                     self.pipelines
                         .standard_3d_pipeline
                         .set_draw_wireframes(false);
-                    self.clear(&view, Color::rgb(117, 186, 255, 1.0));
-                    self.draw_3d(meshes, &view);
-                    self.apply_geometry_commands(commands, &view);
-                    // self.blur_pass(&self.im_tex_1, &view);
                 }
+                self.draw_3d(meshes, &view);
+                self.apply_geometry_commands(commands, &view);
             }
         }
+
+        // self.blur_pass(&self.im_tex_1, &view);
 
         self.renderer.device.poll(wgpu::Maintain::wait());
 

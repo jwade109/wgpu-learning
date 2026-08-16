@@ -11,13 +11,19 @@ use rend::*;
 use crate::camera::*;
 use crate::game_objects::*;
 
-fn make_commands(commands: &mut RenderCommands, font_index: i32, font_size: f64, time: f64) {
+fn make_commands(
+    commands: &mut RenderCommands,
+    frames: u32,
+    font_index: i32,
+    font_size: f64,
+    time: f64,
+) {
     let fonts = commands.fonts.keys().collect::<Vec<_>>();
     let font_id = *fonts[(font_index % fonts.len() as i32) as usize];
 
     let font = commands.fonts.get(&font_id).unwrap();
 
-    let info = format!("{} {:0.2} px", font.name, font_size);
+    let info = format!("({} frames) {} {:0.2} px", frames, font.name, font_size);
 
     let text = "Saturn is the sixth planet from the Sun and the \
         second largest in the Solar System, after Jupiter. It is a gas giant, \
@@ -264,6 +270,8 @@ async fn run() {
     let mut view_selector = ViewSelector::World3d;
     let mut draw_wireframes = false;
 
+    let mut frames = 0;
+
     while !rs.window.should_close() {
         glfw.poll_events();
 
@@ -277,6 +285,7 @@ async fn run() {
 
         make_commands(
             &mut commands,
+            frames,
             font_index,
             font_size,
             (now - start).as_secs_f64(),
@@ -346,6 +355,8 @@ async fn run() {
                 _ => {}
             }
         }
+
+        frames += 1;
 
         match rs.render(
             view_selector,

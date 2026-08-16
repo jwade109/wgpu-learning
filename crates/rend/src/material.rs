@@ -6,9 +6,9 @@ pub struct SpriteMaterial {
     size: (u32, u32),
     pub bind_group: wgpu::BindGroup,
     #[allow(unused)]
-    texture: wgpu::Texture,
+    pub texture: wgpu::Texture,
     #[allow(unused)]
-    view: wgpu::TextureView,
+    pub view: wgpu::TextureView,
     #[allow(unused)]
     sampler: wgpu::Sampler,
 }
