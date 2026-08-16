@@ -16,9 +16,14 @@ pub struct BufferResource {
     pub layout: BindGroupLayout,
 }
 
-pub fn make_array_resource(device: &Device, n_elements: usize, elem_size: usize) -> BufferResource {
+pub fn make_array_resource(
+    device: &Device,
+    n_elements: usize,
+    elem_size: usize,
+    label: &str,
+) -> BufferResource {
     let n_bytes = n_elements * elem_size;
-    println!("Allocating buffer with {n_elements} * {elem_size} = {n_bytes} bytes");
+    println!("{label:20} >> Allocating buffer with {n_elements} * {elem_size} = {n_bytes} bytes");
 
     let bd = BufferDescriptor {
         label: Some("Text pipeline color buffer"),
@@ -77,16 +82,22 @@ pub struct GpuSampleInfo {
 impl TextPipeline {
     pub const MAX_CHARS_PER_PASS: usize = 480;
 
-    pub fn new(device: &Device, config: &SurfaceConfiguration, queue: &Queue) -> Self {
+    pub fn new(rd: &Renderer) -> Self {
         let size = std::mem::size_of::<GpuSampleInfo>();
         assert!(size == 4 * 8);
-        let range_info = make_array_resource(device, Self::MAX_CHARS_PER_PASS, size);
-        let colors = make_array_resource(device, Self::MAX_CHARS_PER_PASS, 16);
-        let transforms = make_array_resource(device, Self::MAX_CHARS_PER_PASS, 64);
+        let range_info = make_array_resource(
+            &rd.device,
+            Self::MAX_CHARS_PER_PASS,
+            size,
+            "Text range info",
+        );
+        let colors = make_array_resource(&rd.device, Self::MAX_CHARS_PER_PASS, 16, "Text colors");
+        let transforms =
+            make_array_resource(&rd.device, Self::MAX_CHARS_PER_PASS, 64, "Text transforms");
 
-        let bgl = material_bind_group_layout(device, "SpriteMaterial Bind Group Layout");
+        let bgl = material_bind_group_layout(&rd.device, "SpriteMaterial Bind Group Layout");
 
-        let mut builder = PipelineBuilder::new(&device);
+        let mut builder = PipelineBuilder::new(&rd.device);
         let shader = Shader::from_path("crates/rend/shaders/text_shader.wgsl");
 
         builder.add_bind_group_layout(&bgl);
@@ -97,14 +108,15 @@ impl TextPipeline {
         let pipeline = builder.build_pipeline::<FullVertex>(
             "Single Texture Pipeline",
             &shader,
-            config.format,
+            rd.config.format,
             true,
             true,
         );
 
         for i in 0..Self::MAX_CHARS_PER_PASS {
             let color = [1.0f32, 1.0, 1.0, 1.0];
-            queue.write_buffer(&colors.buffer, 16 * i as u64, any_as_u8_slice(&color));
+            rd.queue
+                .write_buffer(&colors.buffer, 16 * i as u64, any_as_u8_slice(&color));
         }
 
         Self {

@@ -4,24 +4,14 @@ mod game_objects;
 use std::collections::{BTreeMap, HashSet};
 use std::time::Instant;
 
-use glfw::{Action, ClientApiHint, Key, MouseButton, WindowHint, fail_on_errors};
+use glfw::{Action, ClientApiHint, Key, WindowHint, fail_on_errors};
 use glm::*;
-use rand::rngs::{SmallRng, StdRng};
-use rand::{Rng, RngExt, SeedableRng};
 use rend::*;
 
 use crate::camera::*;
 use crate::game_objects::*;
 
-fn make_commands(
-    commands: &mut RenderCommands,
-    font_index: i32,
-    font_size: f64,
-    time: f64,
-    random_seed: u64,
-    pos: (f64, f64),
-    screen: (f64, f64),
-) {
+fn make_commands(commands: &mut RenderCommands, font_index: i32, font_size: f64, time: f64) {
     let fonts = commands.fonts.keys().collect::<Vec<_>>();
     let font_id = *fonts[(font_index % fonts.len() as i32) as usize];
 
@@ -117,47 +107,51 @@ fn make_commands(
         .line(Vec2d::new(700.0, 500.0), Vec2d::new(1200.0, 900.0))
         .color(Color::GREEN)
         .thickness(12.0);
-    commands
-        .circle(700.0, 500.0)
-        .diameter(100.0)
-        .color(Color::BLUE);
-    commands
-        .circle(1800.0, 700.0)
-        .radius(500.0)
-        .color(Color::BROWN);
-    commands
-        .circle(1800.0, 700.0)
-        .radius(490.0)
-        .color(Color::RED);
-    commands
-        .circle(1800.0, 700.0)
-        .radius(120.0)
-        .color(Color::ORANGE);
-    commands
-        .circle(1800.0, 700.0)
-        .radius(60.0)
-        .color(Color::WHITE);
+
+    // commands
+    //     .circle(700.0, 500.0)
+    //     .diameter(100.0)
+    //     .color(Color::BLUE);
+    // commands
+    //     .circle(1800.0, 700.0)
+    //     .radius(500.0)
+    //     .color(Color::BROWN);
+    // commands
+    //     .circle(1800.0, 700.0)
+    //     .radius(490.0)
+    //     .color(Color::RED);
+    // commands
+    //     .circle(1800.0, 700.0)
+    //     .radius(120.0)
+    //     .color(Color::ORANGE);
+    // commands
+    //     .circle(1800.0, 700.0)
+    //     .radius(60.0)
+    //     .color(Color::WHITE);
 }
 
-fn make_world(renderer: &mut Renderer) -> World {
-    let quad_id = renderer.spawn_mesh(make_quad(&renderer.device));
-    let cube_id = renderer.spawn_mesh(make_cube(&renderer.device, Vec4::new(1.0, 0.6, 0.6, 0.4)));
-    let tetra_id = renderer.spawn_mesh(make_tetrahedron(&renderer.device));
-    let nine_gon_id = renderer.spawn_mesh(make_n_gon(&renderer.device, 9));
+fn make_world(rs: &mut RenderState) -> World {
+    let quad_id = rs.spawn_mesh(make_quad(&rs.renderer.device));
+    let cube_id = rs.spawn_mesh(make_cube(
+        &rs.renderer.device,
+        Vec4::new(1.0, 0.6, 0.6, 0.4),
+    ));
+    let tetra_id = rs.spawn_mesh(make_tetrahedron(&rs.renderer.device));
+    let nine_gon_id = rs.spawn_mesh(make_n_gon(&rs.renderer.device, 9));
 
-    renderer.load_texture("img/invincible.jpg");
+    rs.load_texture("img/invincible.jpg");
 
-    renderer.load_font("cambria");
-    renderer.load_font("consolas");
-    renderer.load_font("garamond");
-    renderer.load_font("arial");
-    renderer.load_font("calibri");
+    rs.load_font("cambria");
+    rs.load_font("consolas");
+    rs.load_font("garamond");
+    rs.load_font("arial");
+    rs.load_font("calibri");
 
     let mut world = World::new();
 
     for x in [-100, 0, 100] {
         for z in [-100, 0, 100] {
-            let id = renderer.spawn_ground_plane(x, z, 100);
+            let id = rs.spawn_ground_plane(x, z, 100);
             world.ground_plane(x, z, id);
         }
     }
@@ -243,37 +237,37 @@ async fn run() {
         .create_window(800, 600, "It's WGPU time.", glfw::WindowMode::Windowed)
         .unwrap();
 
-    let mut renderer = Renderer::new(&mut window).await;
+    let mut rs = RenderState::new(&mut window).await;
 
-    renderer.window.set_framebuffer_size_polling(true);
-    renderer.window.set_key_polling(true);
-    renderer.window.set_mouse_button_polling(true);
-    renderer.window.set_pos_polling(true);
+    rs.window.set_framebuffer_size_polling(true);
+    rs.window.set_key_polling(true);
+    rs.window.set_mouse_button_polling(true);
+    rs.window.set_pos_polling(true);
 
     let mut keys_pressed = HashSet::new();
 
-    let mut world = make_world(&mut renderer);
+    let mut world = make_world(&mut rs);
 
     let mut font_index = 0i32;
     let mut font_size = 48.0f64;
     let mut target_font_size = 48.0f64;
 
-    let font_info: BTreeMap<usize, FontInfo> = renderer
+    let font_info: BTreeMap<usize, FontInfo> = rs
         .fonts
         .iter()
         .map(|(id, (font, _sprite))| (*id, font.clone()))
         .collect();
 
     let start = Instant::now();
-    let mut random_seed = 0;
 
-    while !renderer.window.should_close() {
+    // let mut paused = false;
+    let mut view_selector = ViewSelector::World3d;
+    let mut draw_wireframes = false;
+
+    while !rs.window.should_close() {
         glfw.poll_events();
 
-        renderer.update(
-            world.camera.to_projection_matrix(&renderer.window),
-            world.time,
-        );
+        rs.update(world.camera.to_projection_matrix(&rs.window), world.time);
 
         font_size += (target_font_size - font_size) * 0.03;
 
@@ -281,16 +275,11 @@ async fn run() {
 
         let now = Instant::now();
 
-        let size = renderer.window.get_size();
-
         make_commands(
             &mut commands,
             font_index,
             font_size,
             (now - start).as_secs_f64(),
-            random_seed,
-            renderer.window.get_cursor_pos(),
-            (size.0 as f64, size.1 as f64),
         );
 
         let ctrls = make_camera_controls(&keys_pressed);
@@ -309,34 +298,29 @@ async fn run() {
             }
 
             match event {
-                glfw::WindowEvent::MouseButton(MouseButton::Button1, Action::Press, _) => {
-                    random_seed += 1;
-                }
-
-                //Hit escape
                 glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
-                    renderer.window.set_should_close(true)
+                    rs.window.set_should_close(true)
                 }
-                glfw::WindowEvent::Key(Key::Space, _, Action::Press, _) => {
-                    renderer.paused ^= true;
-                }
+                // glfw::WindowEvent::Key(Key::Space, _, Action::Press, _) => {
+                //     paused ^= true;
+                // }
                 glfw::WindowEvent::Key(Key::Z, _, Action::Press, _) => {
-                    renderer.draw_wireframes ^= true;
+                    draw_wireframes ^= true;
                 }
                 glfw::WindowEvent::Key(Key::Right, _, Action::Press, _) => {
-                    renderer.view_selector = enum_iterator::next_cycle(&renderer.view_selector);
+                    view_selector = enum_iterator::next_cycle(&view_selector);
                 }
                 glfw::WindowEvent::Key(Key::Left, _, Action::Press, _) => {
-                    renderer.view_selector = enum_iterator::previous_cycle(&renderer.view_selector);
+                    view_selector = enum_iterator::previous_cycle(&view_selector);
                 }
 
                 glfw::WindowEvent::Key(Key::M, _, Action::Press, _) => {
                     font_index += 1;
-                    font_index = font_index.clamp(0, renderer.fonts.len() as i32 - 1);
+                    font_index = font_index.clamp(0, rs.fonts.len() as i32 - 1);
                 }
                 glfw::WindowEvent::Key(Key::N, _, Action::Press, _) => {
                     font_index -= 1;
-                    font_index = font_index.clamp(0, renderer.fonts.len() as i32 - 1);
+                    font_index = font_index.clamp(0, rs.fonts.len() as i32 - 1);
                 }
 
                 glfw::WindowEvent::Key(Key::L, _, Action::Press, _) => {
@@ -350,24 +334,24 @@ async fn run() {
 
                 //Window was moved
                 glfw::WindowEvent::Pos(..) => {
-                    renderer.update_surface();
-                    renderer.resize(renderer.window.get_size());
+                    rs.update_surface();
+                    rs.resize(rs.window.get_size());
                 }
 
                 //Window was resized
                 glfw::WindowEvent::FramebufferSize(width, height) => {
-                    renderer.update_surface();
-                    renderer.resize((width, height));
+                    rs.update_surface();
+                    rs.resize((width, height));
                 }
                 _ => {}
             }
         }
 
-        match renderer.render(&world.quads, &commands) {
+        match rs.render(view_selector, draw_wireframes, &world.quads, &commands) {
             Ok(_) => {}
             Err(SurfaceError::Lost | SurfaceError::Outdated) => {
-                renderer.update_surface();
-                renderer.resize(renderer.window.get_size());
+                rs.update_surface();
+                rs.resize(rs.window.get_size());
             }
             Err(e) => eprintln!("{:?}", e),
         }

@@ -14,17 +14,22 @@ pub struct CirclePipeline {
 impl CirclePipeline {
     pub const MAX_CHARS_PER_PASS: usize = 480;
 
-    pub fn new(device: &Device, config: &SurfaceConfiguration, queue: &Queue) -> Self {
-        let colors = make_array_resource(device, Self::MAX_CHARS_PER_PASS, 16);
-        let transforms = make_array_resource(device, Self::MAX_CHARS_PER_PASS, 64);
+    pub fn new(rd: &Renderer) -> Self {
+        let colors = make_array_resource(&rd.device, Self::MAX_CHARS_PER_PASS, 16, "Circle colors");
+        let transforms = make_array_resource(
+            &rd.device,
+            Self::MAX_CHARS_PER_PASS,
+            64,
+            "Circle transforms",
+        );
 
         // the stride is 16 here because that's the minimum.
         // the element is 4 bytes large
-        let radius = make_array_resource(device, Self::MAX_CHARS_PER_PASS, 16);
+        let radius = make_array_resource(&rd.device, Self::MAX_CHARS_PER_PASS, 16, "Circle radii");
 
-        let mesh = make_quad(device);
+        let mesh = make_quad(&rd.device);
 
-        let mut builder = PipelineBuilder::new(&device);
+        let mut builder = PipelineBuilder::new(&rd.device);
         let shader = Shader::from_path("crates/rend/shaders/circle.wgsl");
 
         builder.add_bind_group_layout(&colors.layout);
@@ -34,15 +39,10 @@ impl CirclePipeline {
         let pipeline = builder.build_pipeline::<FullVertex>(
             "Circle Pipeline",
             &shader,
-            config.format,
+            rd.config.format,
             true,
             true,
         );
-
-        for i in 0..Self::MAX_CHARS_PER_PASS {
-            let color = [1.0f32, 1.0, 1.0, 1.0];
-            queue.write_buffer(&colors.buffer, 16 * i as u64, any_as_u8_slice(&color));
-        }
 
         Self {
             pipeline,

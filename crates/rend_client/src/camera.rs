@@ -47,14 +47,6 @@ impl Camera {
         Vec3::new(x, self.altitude, z)
     }
 
-    pub fn target(&self) -> Vec3 {
-        self.target
-    }
-
-    pub fn set_heading(&mut self, heading: f32) {
-        self.heading = heading;
-    }
-
     pub fn apply_controls(&mut self, ctrls: &CameraControls) {
         match ctrls.x_axis {
             CamDir::Positive => {

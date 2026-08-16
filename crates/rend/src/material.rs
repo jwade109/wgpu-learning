@@ -14,8 +14,8 @@ pub struct SpriteMaterial {
 }
 
 impl SpriteMaterial {
-    pub fn load(filename: &str, device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        SpriteMaterial::new(filename, device, queue, filename)
+    pub fn load(filename: &str, rd: &Renderer) -> Self {
+        SpriteMaterial::new(filename, &rd.device, &rd.queue, filename)
     }
 
     fn new(filename: &str, device: &wgpu::Device, queue: &wgpu::Queue, label: &str) -> Self {

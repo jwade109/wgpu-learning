@@ -10,17 +10,13 @@ pub struct Texture {
 impl Texture {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-    pub fn create_intermediate_texture(
-        device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
-        label: &str,
-    ) -> Self {
-        let bgl = material_bind_group_layout(device, label);
+    pub fn blank_texture(rd: &Renderer, label: &str) -> Self {
+        let bgl = material_bind_group_layout(&rd.device, label);
 
         let texture_descriptor = wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
-                width: config.width.max(1),
-                height: config.height.max(1),
+                width: rd.config.width.max(1),
+                height: rd.config.height.max(1),
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -32,11 +28,11 @@ impl Texture {
             view_formats: &[wgpu::TextureFormat::Bgra8UnormSrgb],
         };
 
-        let texture = device.create_texture(&texture_descriptor);
+        let texture = rd.device.create_texture(&texture_descriptor);
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        let sampler = rd.device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -46,7 +42,7 @@ impl Texture {
             ..Default::default()
         });
 
-        let mut builder = BindGroupBuilder::new(device);
+        let mut builder = BindGroupBuilder::new(&rd.device);
         builder.set_layout(&bgl);
         builder.add_material(&view, &sampler);
         let bind_group = builder.build(label);
@@ -59,16 +55,12 @@ impl Texture {
         }
     }
 
-    pub fn create_depth_texture(
-        device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
-        label: &str,
-    ) -> Self {
-        let bgl = BindGroupLayoutBuilder::new(&device).build(label);
+    pub fn depth_texture(rd: &Renderer, label: &str) -> Self {
+        let bgl = BindGroupLayoutBuilder::new(&rd.device).build(label);
 
         let size = wgpu::Extent3d {
-            width: config.width.max(1),
-            height: config.height.max(1),
+            width: rd.config.width.max(1),
+            height: rd.config.height.max(1),
             depth_or_array_layers: 1,
         };
         let desc = wgpu::TextureDescriptor {
@@ -81,10 +73,10 @@ impl Texture {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         };
-        let texture = device.create_texture(&desc);
+        let texture = rd.device.create_texture(&desc);
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        let sampler = rd.device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -97,7 +89,7 @@ impl Texture {
             ..Default::default()
         });
 
-        let mut builder = BindGroupBuilder::new(device);
+        let mut builder = BindGroupBuilder::new(&rd.device);
         builder.set_layout(&bgl);
         // builder.add_material(&view, &sampler);
         let bind_group = builder.build(label);

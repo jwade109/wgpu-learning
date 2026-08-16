@@ -14,7 +14,7 @@ impl LinePipeline {
     pub fn new(device: &Device, config: &SurfaceConfiguration) -> Self {
         // this buffer holds 2D start and end pos, as well as color and thickness
         // so 9 f32s -> 9 * 4 = 36, plus 12 padding bytes -> 48
-        let data = make_array_resource(device, Self::MAX_LINES_PER_PASS, 48);
+        let data = make_array_resource(device, Self::MAX_LINES_PER_PASS, 48, "Line data");
 
         let mesh = make_quad(device);
 

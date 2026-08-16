@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Deserialize, Serialize, Debug, Clone, Copy)]
-pub struct CodePointInfo {
+pub struct GlyphInfo {
     pub x: u32,
     pub y: u32,
     pub width: u32,
@@ -22,7 +22,7 @@ pub struct FontInfo {
     pub italic: bool,
     pub width: u32,
     pub height: u32,
-    pub characters: BTreeMap<char, CodePointInfo>,
+    pub characters: BTreeMap<char, GlyphInfo>,
 }
 
 impl FontInfo {

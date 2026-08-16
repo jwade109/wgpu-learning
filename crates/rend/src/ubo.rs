@@ -28,24 +28,11 @@ impl<T> UBO<T> {
         label: &str,
     ) -> Self {
         let min_alignment = device.limits().min_uniform_buffer_offset_alignment as u64;
-        let max_buffer_size = device.limits().max_uniform_buffer_binding_size as u64;
         let size_of_t = std::mem::size_of::<T>() as u64;
-        let n_elements = max_buffer_size / size_of_t;
 
         let alignment = min_alignment.max(size_of_t);
 
-        let n_actual_elements = max_buffer_size / alignment;
-
-        let name = std::any::type_name::<T>();
-
-        println!("Label:             {label}");
-        println!("Type:              {name}");
-        println!("Size of T:         {size_of_t}");
-        println!("Min alignment:     {min_alignment}");
-        println!("Max buffer size:   {max_buffer_size}");
-        println!("Optimal storage:   {n_elements}");
-        println!("Actual storage:    {n_actual_elements}");
-        println!("Requested storage: {object_count}\n");
+        println!("STOP USING THIS CLASS");
 
         let buffer_descriptor = wgpu::BufferDescriptor {
             label: Some(label),
