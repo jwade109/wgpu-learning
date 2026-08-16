@@ -26,7 +26,7 @@ pub fn make_array_resource(
     println!("{label:20} >> Allocating buffer with {n_elements} * {elem_size} = {n_bytes} bytes");
 
     let bd = BufferDescriptor {
-        label: Some("Text pipeline color buffer"),
+        label: Some(label),
         size: n_bytes.try_into().unwrap(),
         usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         mapped_at_creation: false,
@@ -35,7 +35,7 @@ pub fn make_array_resource(
     let buffer = device.create_buffer(&bd);
 
     let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("Text pipeline color UBO"),
+        label: Some(label),
         entries: &[BindGroupLayoutEntry {
             binding: 0,
             visibility: ShaderStages::all(),
@@ -44,7 +44,7 @@ pub fn make_array_resource(
                 has_dynamic_offset: false,
                 min_binding_size: None,
             },
-            count: NonZeroU32::new(10),
+            count: None,
         }],
     });
 

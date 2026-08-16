@@ -9,16 +9,16 @@ pub struct LinePipeline {
 }
 
 impl LinePipeline {
-    pub const MAX_LINES_PER_PASS: usize = 200;
+    pub const MAX_LINES_PER_PASS: usize = 600;
 
-    pub fn new(device: &Device, config: &SurfaceConfiguration) -> Self {
+    pub fn new(rd: &Renderer) -> Self {
         // this buffer holds 2D start and end pos, as well as color and thickness
         // so 9 f32s -> 9 * 4 = 36, plus 12 padding bytes -> 48
-        let data = make_array_resource(device, Self::MAX_LINES_PER_PASS, 48, "Line data");
+        let data = make_array_resource(&rd.device, Self::MAX_LINES_PER_PASS, 48, "Line data");
 
-        let mesh = make_quad(device);
+        let mesh = make_quad(&rd.device);
 
-        let mut builder = PipelineBuilder::new(&device);
+        let mut builder = PipelineBuilder::new(&rd.device);
         let shader = Shader::from_path("crates/rend/shaders/line.wgsl");
 
         builder.add_bind_group_layout(&data.layout);
@@ -28,7 +28,7 @@ impl LinePipeline {
         let pipeline = builder.build_pipeline::<FullVertex>(
             "Line Pipeline",
             &shader,
-            config.format,
+            rd.config.format,
             true,
             true,
         );

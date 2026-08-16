@@ -347,8 +347,17 @@ async fn run() {
             }
         }
 
-        match rs.render(view_selector, draw_wireframes, &world.quads, &commands) {
-            Ok(_) => {}
+        match rs.render(
+            view_selector,
+            draw_wireframes,
+            &world.quads,
+            &commands,
+            world.time,
+        ) {
+            Ok(Some(drawable)) => {
+                drawable.present();
+            }
+            Ok(None) => (),
             Err(SurfaceError::Lost | SurfaceError::Outdated) => {
                 rs.update_surface();
                 rs.resize(rs.window.get_size());

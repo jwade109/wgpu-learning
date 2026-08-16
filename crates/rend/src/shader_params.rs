@@ -9,6 +9,8 @@ pub struct ShaderParams {
 }
 
 impl ShaderParams {
+    pub const SIZE_IN_BYTES: usize = 40;
+
     pub fn to_bytes(&self) -> Vec<u8> {
         [
             self.mouse.0.to_le_bytes(),

@@ -2,7 +2,7 @@ use crate::*;
 use enum_iterator::Sequence;
 use glm::*;
 use std::collections::HashMap;
-use wgpu::util::DeviceExt;
+use wgpu::{util::DeviceExt, SurfaceTexture};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Sequence)]
 pub enum ViewSelector {
@@ -189,7 +189,9 @@ impl<'a> RenderState<'a> {
         let text_pipeline = TextPipeline::new(&renderer);
         let blur_pipeline = BlurPipeline::new(&renderer.device, &renderer.config);
         let circle_pipeline = CirclePipeline::new(&renderer);
-        let line_pipeline = LinePipeline::new(&renderer.device, &renderer.config);
+        let lava_lamp_pipeline = LavaLampPipeline::new(&renderer);
+        let line_pipeline = LinePipeline::new(&renderer);
+
         let standard_3d_pipeline = Standard3DPipeline::new(
             &renderer.device,
             &ubo_bind_group_layout,
@@ -197,11 +199,7 @@ impl<'a> RenderState<'a> {
             &time_etc_data_bind_group,
             &renderer.config,
         );
-        let lava_lamp_pipeline = LavaLampPipeline::new(
-            &renderer.device,
-            &time_etc_data_bind_group,
-            &renderer.config,
-        );
+
         let map_pipeline = {
             let mut builder = PipelineBuilder::new(&renderer.device);
             let shader = Shader::from_path("crates/rend/shaders/map.wgsl");
@@ -300,7 +298,7 @@ impl<'a> RenderState<'a> {
             .unwrap();
     }
 
-    fn draw_lava(&self, view: &wgpu::TextureView) {
+    fn draw_lava(&self, view: &wgpu::TextureView, time: f32) {
         let mut command_encoder = self
             .renderer
             .device
@@ -308,14 +306,23 @@ impl<'a> RenderState<'a> {
 
         let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
 
+        let mouse_pos = self.window.get_cursor_pos();
+
+        let shader_params = ShaderParams {
+            mouse: (mouse_pos.0 as f32, mouse_pos.1 as f32),
+            time,
+            resolution: (
+                self.window.get_size().0 as f32,
+                self.window.get_size().1 as f32,
+            ),
+        };
+
         let transform = mat4_identity();
         self.pipelines.lava_lamp_pipeline.draw(
             &mut rp,
-            &self.standard_quad,
             &transform,
-            &self.common_shader_info,
+            &shader_params,
             &self.renderer.queue,
-            0,
         );
 
         drop(rp);
@@ -493,17 +500,9 @@ impl<'a> RenderState<'a> {
         }
     }
 
-    fn draw_ui(&self, view: &wgpu::TextureView, commands: &RenderCommands) {
+    fn draw_ui(&self, view: &wgpu::TextureView, commands: &[CharCommand]) {
         let (sx, sy) = self.window.get_size();
         let screen = Vec2d::new(sx as f64, sy as f64);
-
-        let commands: Vec<CharCommand> = commands
-            .commands()
-            .filter_map(|e: &RenderCommand| match e {
-                RenderCommand::Char(c) => Some(*c),
-                _ => None,
-            })
-            .collect();
 
         let obj = commands.iter().next().unwrap();
         let (font, material) = self.fonts.get(&obj.font).unwrap();
@@ -616,10 +615,10 @@ impl<'a> RenderState<'a> {
     pub fn apply_geometry_commands(&self, commands: &RenderCommands, view: &wgpu::TextureView) {
         for cmd in commands.commands() {
             match cmd {
-                RenderCommand::Char(_c) => (),
-                RenderCommand::Rect(c) => self.draw_rectangles(view, &[*c]),
-                RenderCommand::Circle(c) => self.draw_circles(view, &[*c]),
-                RenderCommand::Line(c) => self.draw_lines(view, &[*c]),
+                BatchRenderCommand::Char(c) => self.draw_ui(&view, &c),
+                BatchRenderCommand::Rect(c) => self.draw_rectangles(view, &c),
+                BatchRenderCommand::Circle(c) => self.draw_circles(view, &c),
+                BatchRenderCommand::Line(c) => self.draw_lines(view, &c),
             }
         }
     }
@@ -630,11 +629,12 @@ impl<'a> RenderState<'a> {
         draw_wireframes: bool,
         meshes: &[MeshObject],
         commands: &RenderCommands,
-    ) -> Result<(), wgpu::SurfaceError> {
+        time: f32,
+    ) -> Result<Option<SurfaceTexture>, wgpu::SurfaceError> {
         let (w, h) = self.window.get_size();
 
         if w == 0 || h == 0 {
-            return Ok(());
+            return Ok(None);
         }
 
         self.renderer.device.poll(wgpu::Maintain::wait());
@@ -656,7 +656,7 @@ impl<'a> RenderState<'a> {
                 self.draw_map(&view);
             }
             ViewSelector::Lava => {
-                self.draw_lava(&view);
+                self.draw_lava(&view, time);
             }
             ViewSelector::World3d => {
                 if draw_wireframes {
@@ -673,15 +673,12 @@ impl<'a> RenderState<'a> {
                     self.draw_3d(meshes, &view);
                     self.apply_geometry_commands(commands, &view);
                     // self.blur_pass(&self.im_tex_1, &view);
-                    self.draw_ui(&view, commands);
                 }
             }
         }
 
         self.renderer.device.poll(wgpu::Maintain::wait());
 
-        drawable.present();
-
-        Ok(())
+        Ok(Some(drawable))
     }
 }

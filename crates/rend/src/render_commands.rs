@@ -3,12 +3,64 @@ use std::collections::BTreeMap;
 
 pub type Vec2d = glm::Vector2<f64>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum RenderCommand {
     Char(CharCommand),
     Rect(RectCommand),
     Circle(CircleCommand),
     Line(LineCommand),
+}
+
+#[derive(Debug, Clone)]
+pub enum BatchRenderCommand {
+    Char(Vec<CharCommand>),
+    Rect(Vec<RectCommand>),
+    Circle(Vec<CircleCommand>),
+    Line(Vec<LineCommand>),
+}
+
+impl std::fmt::Display for BatchRenderCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Char(c) => write!(f, "BatchRenderCommand::Char({} elements)", c.len()),
+            Self::Rect(c) => write!(f, "BatchRenderCommand::Rect({} elements)", c.len()),
+            Self::Circle(c) => write!(f, "BatchRenderCommand::Circ({} elements)", c.len()),
+            Self::Line(c) => write!(f, "BatchRenderCommand::Line({} elements)", c.len()),
+        }
+    }
+}
+
+impl BatchRenderCommand {
+    fn new(command: RenderCommand) -> Self {
+        match command {
+            RenderCommand::Char(c) => Self::Char(vec![c]),
+            RenderCommand::Rect(c) => Self::Rect(vec![c]),
+            RenderCommand::Circle(c) => Self::Circle(vec![c]),
+            RenderCommand::Line(c) => Self::Line(vec![c]),
+        }
+    }
+
+    fn try_enqueue(&mut self, command: RenderCommand) -> bool {
+        match (self, command) {
+            (BatchRenderCommand::Char(s), RenderCommand::Char(c)) => {
+                s.push(c);
+                true
+            }
+            (BatchRenderCommand::Rect(s), RenderCommand::Rect(c)) => {
+                s.push(c);
+                true
+            }
+            (BatchRenderCommand::Circle(s), RenderCommand::Circle(c)) => {
+                s.push(c);
+                true
+            }
+            (BatchRenderCommand::Line(s), RenderCommand::Line(c)) => {
+                s.push(c);
+                true
+            }
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -46,7 +98,7 @@ pub struct LineCommand {
 
 pub struct RenderCommands {
     pub fonts: BTreeMap<usize, FontInfo>,
-    commands: Vec<RenderCommand>,
+    commands: Vec<BatchRenderCommand>,
 }
 
 impl RenderCommands {
@@ -57,12 +109,25 @@ impl RenderCommands {
         }
     }
 
-    pub fn commands(&self) -> impl Iterator<Item = &RenderCommand> {
+    pub fn commands(&self) -> impl Iterator<Item = &BatchRenderCommand> {
         self.commands.iter()
     }
 
+    pub fn enqueue(&mut self, command: RenderCommand) {
+        let is_batched = self
+            .commands
+            .last_mut()
+            .map(|last| last.try_enqueue(command.clone()))
+            .unwrap_or(false);
+
+        if !is_batched {
+            let b = BatchRenderCommand::new(command);
+            self.commands.push(b);
+        }
+    }
+
     pub fn rect(&mut self, pos: Vec2d, dims: Vec2d, angle: f64, color: Color) {
-        self.commands.push(RenderCommand::Rect(RectCommand {
+        self.enqueue(RenderCommand::Rect(RectCommand {
             pos,
             dims,
             angle,
@@ -71,7 +136,7 @@ impl RenderCommands {
     }
 
     pub fn circle(&mut self, x: f64, y: f64) -> CircleBuilder<'_> {
-        let builder = CircleBuilder::new(self, x, y);
+        let builder: CircleBuilder<'_> = CircleBuilder::new(self, x, y);
         builder
     }
 
@@ -81,7 +146,7 @@ impl RenderCommands {
     }
 
     pub fn char(&mut self, pos: Vec2d, dims: Vec2d, c: char, font: usize, color: Color) {
-        self.commands.push(RenderCommand::Char(CharCommand {
+        self.enqueue(RenderCommand::Char(CharCommand {
             pos,
             dims,
             c,
@@ -195,7 +260,7 @@ impl<'a> Drop for CircleBuilder<'a> {
             radius: self.r,
             color: self.color,
         };
-        self.commands.commands.push(RenderCommand::Circle(circle));
+        self.commands.enqueue(RenderCommand::Circle(circle));
     }
 }
 
@@ -237,6 +302,6 @@ impl<'a> Drop for LineBuilder<'a> {
             thickness: self.thickness,
             color: self.color,
         };
-        self.commands.commands.push(RenderCommand::Line(line));
+        self.commands.enqueue(RenderCommand::Line(line));
     }
 }

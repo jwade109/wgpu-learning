@@ -9,7 +9,7 @@ struct LineData {
     _pad2: f32,
 };
 
-const MAX_LINES_PER_PASS: u32 = 200;
+const MAX_LINES_PER_PASS: u32 = 600;
 
 struct Vertex {
     @builtin(instance_index) instance_index: u32,
