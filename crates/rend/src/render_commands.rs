@@ -13,7 +13,7 @@ pub enum RenderCommand {
 
 #[derive(Debug, Clone)]
 pub enum BatchRenderCommand {
-    Char(Vec<CharCommand>),
+    Char(usize, Vec<CharCommand>),
     Rect(Vec<RectCommand>),
     Circle(Vec<CircleCommand>),
     Line(Vec<LineCommand>),
@@ -22,7 +22,7 @@ pub enum BatchRenderCommand {
 impl std::fmt::Display for BatchRenderCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Char(c) => write!(f, "BatchRenderCommand::Char({} elements)", c.len()),
+            Self::Char(_, c) => write!(f, "BatchRenderCommand::Char({} elements)", c.len()),
             Self::Rect(c) => write!(f, "BatchRenderCommand::Rect({} elements)", c.len()),
             Self::Circle(c) => write!(f, "BatchRenderCommand::Circ({} elements)", c.len()),
             Self::Line(c) => write!(f, "BatchRenderCommand::Line({} elements)", c.len()),
@@ -33,7 +33,7 @@ impl std::fmt::Display for BatchRenderCommand {
 impl BatchRenderCommand {
     fn new(command: RenderCommand) -> Self {
         match command {
-            RenderCommand::Char(c) => Self::Char(vec![c]),
+            RenderCommand::Char(_) => unimplemented!(),
             RenderCommand::Rect(c) => Self::Rect(vec![c]),
             RenderCommand::Circle(c) => Self::Circle(vec![c]),
             RenderCommand::Line(c) => Self::Line(vec![c]),
@@ -42,7 +42,7 @@ impl BatchRenderCommand {
 
     fn try_enqueue(&mut self, command: RenderCommand) -> bool {
         match (self, command) {
-            (BatchRenderCommand::Char(s), RenderCommand::Char(c)) => {
+            (BatchRenderCommand::Char(_, s), RenderCommand::Char(c)) => {
                 s.push(c);
                 true
             }
@@ -76,7 +76,6 @@ pub struct CharCommand {
     pub pos: Vec2d,
     pub dims: Vec2d,
     pub c: char,
-    pub font: usize,
     pub color: Color,
 }
 
@@ -145,16 +144,6 @@ impl RenderCommands {
         builder
     }
 
-    pub fn char(&mut self, pos: Vec2d, dims: Vec2d, c: char, font: usize, color: Color) {
-        self.enqueue(RenderCommand::Char(CharCommand {
-            pos,
-            dims,
-            c,
-            font,
-            color,
-        }));
-    }
-
     pub fn paragraph(
         &mut self,
         font_id: usize,
@@ -173,6 +162,8 @@ impl RenderCommands {
 
         let mut x = x_origin;
         let mut y = y_origin;
+
+        let mut char_commands = Vec::new();
 
         for ch in text.chars() {
             if ch == '\n' {
@@ -198,8 +189,16 @@ impl RenderCommands {
 
             let color = Color::WHITE;
 
+            let pos = Vec2d::new(xt, yt);
+            let dims = Vec2d::new(w, h);
+
             if ch != ' ' {
-                self.char(Vec2d::new(xt, yt), Vec2d::new(w, h), ch, font_id, color);
+                char_commands.push(CharCommand {
+                    pos,
+                    dims,
+                    c: ch,
+                    color,
+                });
             }
 
             col_offset += 1;
@@ -214,6 +213,10 @@ impl RenderCommands {
                 }
             }
         }
+
+        let batch = BatchRenderCommand::Char(font_id, char_commands);
+
+        self.commands.push(batch);
     }
 }
 

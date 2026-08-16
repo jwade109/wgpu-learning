@@ -54,29 +54,29 @@ fn make_commands(
         larger (but less massive) than the planet Mercury and is the only moon \
         in the Solar System that has a substantial atmosphere.[28]";
 
-    let layout_width = 800.0;
+    let layout_width = 1700.0;
 
-    commands.paragraph(font_id, 40.0, 200.0, 100.0, &info, None);
+    commands.paragraph(*fonts[0], 40.0, 200.0, 100.0, &info, None);
     commands.paragraph(font_id, font_size, 200.0, 200.0, &text, Some(layout_width));
 
-    commands.rect(
-        Vec2d::new(150.0, 100.0),
-        Vec2d::new(7.0, 1000.0),
-        0.0,
-        Color::WHITE,
-    );
-    commands.rect(
-        Vec2d::new(200.0, 180.0),
-        Vec2d::new(layout_width, 7.0),
-        0.0,
-        Color::GRAY,
-    );
-    commands.rect(
-        Vec2d::new(0.0, 0.0),
-        Vec2d::new(layout_width + 500.0, 4000.0),
-        0.0,
-        Color::gray(0.0, 0.7),
-    );
+    // commands.rect(
+    //     Vec2d::new(150.0, 100.0),
+    //     Vec2d::new(7.0, 1000.0),
+    //     0.0,
+    //     Color::WHITE,
+    // );
+    // commands.rect(
+    //     Vec2d::new(200.0, 180.0),
+    //     Vec2d::new(layout_width, 7.0),
+    //     0.0,
+    //     Color::GRAY,
+    // );
+    // commands.rect(
+    //     Vec2d::new(0.0, 0.0),
+    //     Vec2d::new(layout_width + 500.0, 4000.0),
+    //     0.0,
+    //     Color::gray(0.0, 0.7),
+    // );
 
     {
         commands

@@ -506,12 +506,11 @@ impl<'a> RenderState<'a> {
         }
     }
 
-    fn draw_ui(&self, view: &wgpu::TextureView, commands: &[CharCommand]) {
+    fn draw_ui(&self, view: &wgpu::TextureView, font_id: usize, commands: &[CharCommand]) {
         let (sx, sy) = self.window.get_size();
         let screen = Vec2d::new(sx as f64, sy as f64);
 
-        let obj = commands.iter().next().unwrap();
-        let (font, material) = self.fonts.get(&obj.font).unwrap();
+        let (font, material) = self.fonts.get(&font_id).unwrap();
 
         for chunk in commands.chunks(TextPipeline::MAX_CHARS_PER_PASS) {
             let mut command_encoder = self
@@ -621,7 +620,7 @@ impl<'a> RenderState<'a> {
     pub fn apply_geometry_commands(&self, commands: &RenderCommands, view: &wgpu::TextureView) {
         for cmd in commands.commands() {
             match cmd {
-                BatchRenderCommand::Char(c) => self.draw_ui(&view, &c),
+                BatchRenderCommand::Char(font_id, c) => self.draw_ui(&view, *font_id, &c),
                 BatchRenderCommand::Rect(c) => self.draw_rectangles(view, &c),
                 BatchRenderCommand::Circle(c) => self.draw_circles(view, &c),
                 BatchRenderCommand::Line(c) => self.draw_lines(view, &c),
@@ -658,29 +657,32 @@ impl<'a> RenderState<'a> {
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         self.clear(&view, Color::rgb(117, 186, 255, 1.0));
+        self.apply_geometry_commands(commands, &view);
+        // self.draw_shadows(&self.im_tex_1.bind_group, &view, time);
+        // self.blur_pass(&self.im_tex_2, &view);
 
-        match view_selector {
-            ViewSelector::Map => {
-                self.draw_shadows(&self.invincible.bind_group, &view, time);
-            }
-            ViewSelector::Lava => {
-                self.draw_lava(&view, time);
-            }
-            ViewSelector::World3d => {
-                if draw_wireframes {
-                    self.pipelines
-                        .standard_3d_pipeline
-                        .set_draw_wireframes(true);
-                    self.clear(&view, Color::BLACK);
-                } else {
-                    self.pipelines
-                        .standard_3d_pipeline
-                        .set_draw_wireframes(false);
-                }
-                self.draw_3d(meshes, &view);
-                self.apply_geometry_commands(commands, &view);
-            }
-        }
+        // match view_selector {
+        //     ViewSelector::Map => {
+        //         self.draw_shadows(&self.invincible.bind_group, &view, time);
+        //     }
+        //     ViewSelector::Lava => {
+        //         self.draw_lava(&view, time);
+        //     }
+        //     ViewSelector::World3d => {
+        //         if draw_wireframes {
+        //             self.pipelines
+        //                 .standard_3d_pipeline
+        //                 .set_draw_wireframes(true);
+        //             self.clear(&view, Color::BLACK);
+        //         } else {
+        //             self.pipelines
+        //                 .standard_3d_pipeline
+        //                 .set_draw_wireframes(false);
+        //         }
+        //         self.draw_3d(meshes, &view);
+        //         self.apply_geometry_commands(commands, &view);
+        //     }
+        // }
 
         // self.blur_pass(&self.im_tex_1, &view);
 

@@ -63,8 +63,9 @@ const p2 = vec2<f32>(1500.0, 1200.0);
 const p3 = vec2<f32>(1700.0, 600.0);
 
 fn height_func(p: vec2<f32>) -> f32 {
-
-    return 1.0 - length(textureSample(texture, sample, p / params.resolution).xyz);
+    let uv = p / params.resolution;
+    let l = length(textureSample(texture, sample, uv).xyz);
+    return 1.0 - l;
 }
 
 fn is_in_shadow(pz: vec3<f32>, sun: vec3<f32>) -> bool {
@@ -73,19 +74,25 @@ fn is_in_shadow(pz: vec3<f32>, sun: vec3<f32>) -> bool {
 
     var i = 0;
 
+    let n = 300;
+    let dist = length(pz.xy - sun.xy);
+    let step_size = dist / f32(n);
+
     while (length(sample - sun) > 5.0)
     {
         i += 1;
-        if (i > 200)
+        if (i > n)
         {
             break;
         }
 
-        sample += u * 1.0;
+        sample += u * step_size;
         let z_sample = height_func(sample.xy);
-        if (z_sample > sample.z)
-        {
+        if (z_sample > sample.z) {
             return true;
+        }
+        if (sample.z > 1.0) {
+            return false;
         }
     }
 
@@ -95,7 +102,7 @@ fn is_in_shadow(pz: vec3<f32>, sun: vec3<f32>) -> bool {
 @fragment
 fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
 
-    let sun = vec3<f32>(params.mouse_pos, 3.0 + sin(params.time));
+    let sun = vec3<f32>(params.mouse_pos, 12.0 + sin(params.time));
 
     // let pix = 1.0;
     let p = in.position.xy; // floor(in.position.xy / pix) * pix;
@@ -106,22 +113,11 @@ fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
 
     let pz = vec3<f32>(p, z);
 
-    let tide_level = 0.0; // 20.0 + 3.0 * sin(params.time / 3.0);
-
     let is_in_shadow = is_in_shadow(pz, sun);
 
-    var color = 0.0;
-    let tol = 0.1;
-
-    for (var level = 5; level < 100; level += 5)
-    {
-        let l = f32(level);
-        color += 0.05 * smoothstep(l - tol, l + tol, z);
-    }
-
-    var r = pow(color_here.r, 2.2);
-    var g = pow(color_here.g, 2.2);
-    var b = pow(color_here.b, 2.2);
+    var r = z;
+    var g = z;
+    var b = z;
 
     let point_of_interest = params.mouse_pos;
 
@@ -129,9 +125,9 @@ fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
 
     if (is_in_shadow)
     {
-        r *= 0.2;
-        g *= 0.2;
-        b *= 0.2;
+        r = 0.3;
+        g = 0.3;
+        b = 0.3;
     }
 
     if (sdf_d < 0.0)
