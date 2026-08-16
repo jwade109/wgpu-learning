@@ -68,7 +68,7 @@ fn desaturate(in: VertexShaderOutput) -> vec4<f32> {
 
 @fragment
 fn fs_main(in: VertexShaderOutput) -> @location(0) vec4<f32> {
-    return desaturate(in);
-    // return pixelate(in, 200.0);
+    // return desaturate(in);
+    return pixelate(in, 200.0);
     // return do_blur(in);
 }

@@ -1,5 +1,6 @@
+use crate::renderer_backend::Color;
 use crate::renderer_backend::*;
-use glm::{Mat4, Vec4};
+use glm::Mat4;
 use wgpu::*;
 
 pub struct CirclePipeline {
@@ -52,8 +53,12 @@ impl CirclePipeline {
         }
     }
 
-    pub fn set_color(&self, queue: &Queue, i: usize, color: Vec4) {
-        queue.write_buffer(&self.colors.buffer, 16 * i as u64, any_as_u8_slice(&color));
+    pub fn set_color(&self, queue: &Queue, i: usize, color: Color) {
+        queue.write_buffer(
+            &self.colors.buffer,
+            16 * i as u64,
+            any_as_u8_slice(&color.to_vec()),
+        );
     }
 
     pub fn set_transform(&self, queue: &Queue, i: usize, transform: &Mat4) {
@@ -70,12 +75,13 @@ impl CirclePipeline {
         queue.write_buffer(&self.radius.buffer, 16 * i as u64, any_as_u8_slice(&radius));
     }
 
-    pub fn assign_buffer_data(&self, queue: &Queue, commands: &[CircleCommand], sx: f64, sy: f64) {
+    pub fn assign_buffer_data(&self, queue: &Queue, commands: &[CircleCommand], screen: Vec2d) {
         for (i, cmd) in commands.iter().enumerate() {
             let ul_x = cmd.x - cmd.radius;
             let ul_y = cmd.y - cmd.radius;
-            let transform =
-                screen_space_transform(ul_x, ul_y, cmd.radius * 2.0, cmd.radius * 2.0, sx, sy, 0.0);
+            let pos = Vec2d::new(ul_x, ul_y);
+            let dims = Vec2d::new(cmd.radius, cmd.radius) * 2.0;
+            let transform = screen_space_transform(pos, dims, screen, 0.0);
             self.set_transform(queue, i, &transform);
             self.set_color(queue, i, cmd.color);
             self.set_radius(queue, i, cmd.radius as f32);

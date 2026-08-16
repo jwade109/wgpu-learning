@@ -176,7 +176,7 @@ impl<'a> Renderer<'a> {
 
         let circle_pipeline = CirclePipeline::new(&device, &config, &queue);
 
-        let line_pipeline = LinePipeline::new(&device, &config, &queue);
+        let line_pipeline = LinePipeline::new(&device, &config);
 
         Self {
             paused: false,
@@ -308,12 +308,12 @@ impl<'a> Renderer<'a> {
         self.queue.submit(std::iter::once(command_encoder.finish()));
     }
 
-    fn clear(&self, view: &wgpu::TextureView, color: wgpu::Color) {
+    fn clear(&self, view: &wgpu::TextureView, color: Color) {
         let mut command_encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        let mut rp = self.get_render_pass(&mut command_encoder, Some(color), &view);
+        let rp = self.get_render_pass(&mut command_encoder, Some(color.to_wgpu()), &view);
 
         drop(rp);
 
@@ -332,7 +332,7 @@ impl<'a> Renderer<'a> {
         self.standard_3d_pipeline.set_bindings(&mut rp);
 
         for i in 0..world.quads.len() {
-            let matrix = world.quads[i].get_transform_matrix();
+            let matrix: Matrix4<f32> = world.quads[i].get_transform_matrix();
             self.standard_3d_pipeline
                 .upload_transform(i as u64, &matrix, &self.queue);
         }
@@ -358,15 +358,9 @@ impl<'a> Renderer<'a> {
         self.queue.submit(std::iter::once(command_encoder.finish()));
     }
 
-    fn draw_circles(&self, view: &wgpu::TextureView, commands: &RenderCommands) {
+    fn draw_circles(&self, view: &wgpu::TextureView, commands: &[CircleCommand]) {
         let (sx, sy) = self.window.get_size();
-        let commands: Vec<CircleCommand> = commands
-            .commands()
-            .filter_map(|e: &RenderCommand| match e {
-                RenderCommand::Circle(c) => Some(*c),
-                _ => None,
-            })
-            .collect();
+        let screen = Vec2d::new(sx as f64, sy as f64);
 
         for chunk in commands.chunks(CirclePipeline::MAX_CHARS_PER_PASS) {
             let mut command_encoder = self
@@ -376,7 +370,7 @@ impl<'a> Renderer<'a> {
             let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
 
             self.circle_pipeline
-                .assign_buffer_data(&self.queue, chunk, sx as f64, sy as f64);
+                .assign_buffer_data(&self.queue, chunk, screen);
 
             self.circle_pipeline.draw_circles(&mut rp, chunk.len());
 
@@ -386,16 +380,8 @@ impl<'a> Renderer<'a> {
         }
     }
 
-    fn draw_lines(&self, view: &wgpu::TextureView, commands: &RenderCommands) {
+    fn draw_lines(&self, view: &wgpu::TextureView, commands: &[LineCommand]) {
         let (sx, sy) = self.window.get_size();
-        let commands: Vec<LineCommand> = commands
-            .commands()
-            .filter_map(|e: &RenderCommand| match e {
-                RenderCommand::Line(c) => Some(*c),
-                _ => None,
-            })
-            .collect();
-
         for chunk in commands.chunks(LinePipeline::MAX_LINES_PER_PASS) {
             let mut command_encoder = self
                 .device
@@ -414,16 +400,9 @@ impl<'a> Renderer<'a> {
         }
     }
 
-    fn draw_rectangles(&self, view: &wgpu::TextureView, commands: &RenderCommands) {
+    fn draw_rectangles(&self, view: &wgpu::TextureView, commands: &[RectCommand]) {
         let (sx, sy) = self.window.get_size();
-
-        let commands: Vec<RectCommand> = commands
-            .commands()
-            .filter_map(|e: &RenderCommand| match e {
-                RenderCommand::Rect(c) => Some(*c),
-                _ => None,
-            })
-            .collect();
+        let screen = Vec2d::new(sx as f64, sy as f64);
 
         for cmd in commands {
             let mut command_encoder = self
@@ -432,9 +411,7 @@ impl<'a> Renderer<'a> {
 
             let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
 
-            let tf = screen_space_transform(
-                cmd.x, cmd.y, cmd.width, cmd.height, sx as f64, sy as f64, cmd.angle,
-            );
+            let tf = screen_space_transform(cmd.pos, cmd.dims, screen, cmd.angle);
 
             self.single_color_pipeline.draw(
                 &mut rp,
@@ -452,6 +429,7 @@ impl<'a> Renderer<'a> {
 
     fn draw_ui(&self, view: &wgpu::TextureView, commands: &RenderCommands) {
         let (sx, sy) = self.window.get_size();
+        let screen = Vec2d::new(sx as f64, sy as f64);
 
         let commands: Vec<CharCommand> = commands
             .commands()
@@ -472,7 +450,7 @@ impl<'a> Renderer<'a> {
             let mut rp = self.get_render_pass(&mut command_encoder, None, &view);
 
             self.text_pipeline
-                .assign_buffer_data(&self.queue, chunk, font, sx as f64, sy as f64);
+                .assign_buffer_data(&self.queue, chunk, font, screen);
             self.text_pipeline
                 .draw_text(&mut rp, &self.standard_quad, material, chunk.len());
 
@@ -557,6 +535,17 @@ impl<'a> Renderer<'a> {
         self.queue.submit(std::iter::once(command_encoder.finish()));
     }
 
+    pub fn apply_geometry_commands(&self, commands: &RenderCommands, view: &wgpu::TextureView) {
+        for cmd in commands.commands() {
+            match cmd {
+                RenderCommand::Char(c) => (),
+                RenderCommand::Rect(c) => self.draw_rectangles(view, &[*c]),
+                RenderCommand::Circle(c) => self.draw_circles(view, &[*c]),
+                RenderCommand::Line(c) => self.draw_lines(view, &[*c]),
+            }
+        }
+    }
+
     pub fn render(
         &mut self,
         world: &mut World,
@@ -594,24 +583,14 @@ impl<'a> Renderer<'a> {
             }
             ViewSelector::World3d => {
                 if self.draw_wireframes {
+                    self.clear(&view, Color::BLACK);
                     self.draw_3d(&world, &view);
-                    // self.blur_pass(&self.intermediate_texture_2, &view);
                 } else {
-                    self.clear(
-                        &view,
-                        wgpu::Color {
-                            r: 0.4,
-                            g: 0.4,
-                            b: 0.4,
-                            a: 1.0,
-                        },
-                    );
+                    self.clear(&view, Color::rgb(117, 186, 255, 1.0));
                     self.draw_3d(&world, &view);
-                    // self.draw_rectangles(&view, commands);
+                    self.apply_geometry_commands(commands, &view);
                     // self.blur_pass(&self.intermediate_texture, &view);
-                    // self.draw_lines(&view, commands);
-                    // self.draw_circles(&view, commands);
-                    // self.draw_ui(&view, commands);
+                    self.draw_ui(&view, commands);
                 }
             }
         }

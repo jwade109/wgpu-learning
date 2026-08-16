@@ -1,5 +1,5 @@
 use crate::renderer_backend::*;
-use glm::{Mat4, Vec4};
+use glm::Vec4;
 use wgpu::*;
 
 pub struct LinePipeline {
@@ -11,7 +11,7 @@ pub struct LinePipeline {
 impl LinePipeline {
     pub const MAX_LINES_PER_PASS: usize = 200;
 
-    pub fn new(device: &Device, config: &SurfaceConfiguration, queue: &Queue) -> Self {
+    pub fn new(device: &Device, config: &SurfaceConfiguration) -> Self {
         // this buffer holds 2D start and end pos, as well as color and thickness
         // so 9 f32s -> 9 * 4 = 36, plus 12 padding bytes -> 48
         let data = make_array_resource(device, Self::MAX_LINES_PER_PASS, 48);
@@ -80,7 +80,7 @@ impl LinePipeline {
                 i,
                 cmd.start,
                 cmd.end,
-                cmd.color,
+                cmd.color.to_vec(),
                 cmd.thickness,
                 sx,
                 sy,

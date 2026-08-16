@@ -152,16 +152,14 @@ impl TextPipeline {
         queue: &Queue,
         commands: &[CharCommand],
         font: &FontInfo,
-        sx: f64,
-        sy: f64,
+        screen: Vec2d,
     ) {
         for (i, text) in commands.iter().enumerate() {
             let range = font.get_sample_range(text.c).unwrap();
-            let transform =
-                screen_space_transform(text.x, text.y, text.width, text.height, sx, sy, 0.0);
+            let transform = screen_space_transform(text.pos, text.dims, screen, 0.0);
             self.set_range(queue, i, &range);
             self.set_transform(queue, i, &transform);
-            self.set_color(queue, i, text.color)
+            self.set_color(queue, i, text.color.to_vec())
         }
     }
 
@@ -180,23 +178,15 @@ impl TextPipeline {
     }
 }
 
-pub fn screen_space_transform(
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-    sx: f64,
-    sy: f64,
-    angle: f64,
-) -> Mat4 {
-    let aspect_ratio = (sx / sy) as f32;
+pub fn screen_space_transform(pos: Vec2d, dims: Vec2d, screen: Vec2d, _angle: f64) -> Mat4 {
+    // let aspect_ratio = (sx / sy) as f32;
 
-    let width_scale = width as f32 / sx as f32;
-    let height_scale = height as f32 / sy as f32;
+    let width_scale = dims.x / screen.x;
+    let height_scale = dims.y / screen.y;
 
-    let xoff = 2.0 * (x as f32 + width as f32 / 2.0) / sx as f32 - 1.0;
-    let yoff = -(2.0 * (y as f32 + height as f32 / 2.0) / sy as f32 - 1.0);
+    let xoff = 2.0 * (pos.x + dims.x / 2.0) / screen.x - 1.0;
+    let yoff = -(2.0 * (pos.y + dims.y / 2.0) / screen.y - 1.0);
 
-    translation_matrix(Vec3::new(xoff, yoff, 0.0))
-        * mat4_diagonal(width_scale, height_scale, 1.0, 1.0)
+    translation_matrix(Vec3::new(xoff as f32, yoff as f32, 0.0))
+        * mat4_diagonal(width_scale as f32, height_scale as f32, 1.0, 1.0)
 }

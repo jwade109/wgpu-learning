@@ -1,3 +1,4 @@
+use crate::renderer_backend::Color;
 use crate::renderer_backend::*;
 use wgpu::*;
 
@@ -59,12 +60,12 @@ impl SingleColorPipeline {
         rp: &mut RenderPass,
         mesh: &Mesh,
         transform: &glm::Mat4,
-        color: &glm::Vec4,
+        color: &Color,
         queue: &Queue,
     ) {
         rp.set_pipeline(self.pipeline());
         self.transforms_ubo.upload(0, transform, queue);
-        self.color_ubo.upload(0, color, queue);
+        self.color_ubo.upload(0, &color.to_vec(), queue);
         rp.set_bind_group(0, self.transforms_ubo.bind_group(0 as usize), &[]);
         rp.set_bind_group(1, self.color_ubo.bind_group(0 as usize), &[]);
         draw_mesh(rp, mesh);

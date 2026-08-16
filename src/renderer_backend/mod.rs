@@ -18,6 +18,7 @@ mod text_pipeline;
 mod texture;
 mod ubo;
 mod vertex;
+mod color;
 
 pub use bind_group::*;
 pub use bind_group_layout::*;
@@ -39,3 +40,4 @@ pub use text_pipeline::*;
 pub use texture::*;
 pub use ubo::*;
 pub use vertex::*;
+pub use color::*;

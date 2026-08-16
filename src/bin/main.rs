@@ -57,141 +57,80 @@ fn make_commands(
     commands.paragraph(font_id, 40.0, 200.0, 100.0, &info, None);
     commands.paragraph(font_id, font_size, 200.0, 200.0, &text, Some(layout_width));
 
-    // let gray = Vec4::new(1.0, 1.0, 1.0, 0.3);
-    let white = Vec4::new(1.0, 1.0, 1.0, 1.0);
-    let black = Vec4::new(0.0, 0.0, 0.0, 1.0);
+    commands.rect(
+        Vec2d::new(150.0, 100.0),
+        Vec2d::new(7.0, 1000.0),
+        0.0,
+        Color::WHITE,
+    );
+    commands.rect(
+        Vec2d::new(200.0, 180.0),
+        Vec2d::new(layout_width, 7.0),
+        0.0,
+        Color::GRAY,
+    );
+    commands.rect(
+        Vec2d::new(0.0, 0.0),
+        Vec2d::new(layout_width + 500.0, 4000.0),
+        0.0,
+        Color::gray(0.0, 0.7),
+    );
 
-    commands.rect(150.0, 100.0, 7.0, 1000.0, 0.0, white);
-    // commands.rect(200.0, 180.0, layout_width, 7.0, 0.0, gray);
-    // commands.rect(0.0, 0.0, layout_width + 500.0, 4000.0, 0.0, black);
-
-    for x in (0..24).step_by(3) {
-        for y in (0..20).step_by(3) {
-            let r = x as f32 / 24.0;
-            let g = y as f32 / 20.0;
-            let size = 110.0;
-            let padding = 10.0;
-            let angle = x as f64 / 10.0 + y as f64 / 8.0 + time / 4.0;
-            let x = padding + x as f64 * (size + padding);
-            let y = padding + y as f64 * (size + padding);
-            let w = size * 3.0;
-            let h = size;
-            let color = Vector4::new(r.sqrt(), g.sqrt(), 0.0, 1.0);
-            commands.rect(x, y, w, h, angle, color);
-            commands.rect(x, y, w, h, 0.0, Vector4::new(1.0, 1.0, 1.0, 0.1));
-            commands.rect(x, y, 6.0, 6.0, 0.0, Vector4::new(1.0, 0.3, 0.1, 1.0));
+    {
+        commands
+            .circle(700.0, 500.0)
+            .diameter(320.0)
+            .color(Color::BLACK);
+        commands
+            .line(Vec2d::new(700.0, 500.0), Vec2d::new(1200.0, 900.0))
+            .color(Color::BLACK)
+            .thickness(32.0);
+        for i in 0..20 {
+            let a = i as f64 / 4.0 + time;
+            let r1 = 155.0;
+            let r2 = 225.0 + 50.0 * a.sin();
+            let start = Vec2d::new(700.0, 500.0) + Vec2d::new(a.cos(), a.sin()) * r1;
+            let end = Vec2d::new(700.0, 500.0) + Vec2d::new(a.cos(), a.sin()) * r2;
+            commands.line(start, end);
         }
     }
 
-    let mut rng = SmallRng::seed_from_u64(random_seed);
-
-    for _ in 0..20 {
-        let x = rng.random_range(100.0..screen.0 - 100.0);
-        let y = rng.random_range(100.0..screen.1 - 100.0);
-        // let rad = rng.random_range(30.0..200.0);
-
-        let r = rng.random_range(0.1f32..1.0).powi(3);
-        let g = rng.random_range(0.1f32..1.0).powi(3);
-        let b = rng.random_range(0.1f32..1.0).powi(3);
-
-        let anim = ((x + y + time) / 3.0).sin() * 0.5 + 0.5;
-
-        let d = ((x - pos.0).powi(2) + (y - pos.1).powi(2)).sqrt();
-
-        let rad = 40.0 + 16000.0 / (d + 400.0) * (anim * 6.0);
-
-        commands
-            .circle(x, y)
-            .radius(rad + 15.0)
-            .color(Vector4::new(0.0, 0.0, 0.0, 1.0));
-        commands
-            .circle(x, y)
-            .radius(rad + 7.0)
-            .color(Vector4::new(1.0, 1.0, 1.0, 1.0));
-        commands
-            .circle(x, y)
-            .radius(rad)
-            .color(Vector4::new(r, g, b, 1.0));
-    }
-
-    for x in (50..900).step_by(20) {
-        commands
-            .circle(x as f64 + 10.0, 50.0)
-            .radius(3.0)
-            .color(Vector4::new(1.0, 0.7, 0.0, 1.0));
-        commands
-            .circle(50.0, x as f64 + 10.0)
-            .radius(3.0)
-            .color(Vector4::new(1.0, 0.7, 0.0, 1.0));
-    }
-
-    commands.line(
-        Vec2d::new(100.0, 200.0),
-        Vec2d::new(700.0, 400.0),
-        Vec4::new(0.3, 0.7, 1.0, 1.0),
-        12.0,
-    );
-
-    // commands
-    //     .circle(100.0, 200.0)
-    //     .radius(6.0)
-    //     .color(Vec4::new(0.3, 0.3, 0.3, 1.0));
-
-    for _ in 0..200 {
-        let x1 = rng.random_range(100.0..screen.0 - 100.0);
-        let y1 = rng.random_range(100.0..screen.1 - 100.0);
-        let x2 = rng.random_range(100.0..screen.0 - 100.0);
-        let y2 = rng.random_range(100.0..screen.1 - 100.0);
-
-        let r = rng.random_range(0.1f32..1.0).powi(3);
-        let g = rng.random_range(0.1f32..1.0).powi(3);
-        let b = rng.random_range(0.1f32..1.0).powi(3);
-
-        let thickness = rng.random_range(4.0..20.0);
-
-        let color = Vector4::new(r, g, b, 1.0);
-
-        // commands.line(
-        //     Vec2d::new(x1, y1),
-        //     Vec2d::new(x2, y2),
-        //     black,
-        //     thickness + 16.0,
-        // );
-        commands.line(
-            Vec2d::new(x1, y1),
-            Vec2d::new(x2, y2),
-            black,
-            thickness + 8.0,
-        );
-        commands.line(Vec2d::new(x1, y1), Vec2d::new(x2, y2), color, thickness);
-
-        // commands.line(
-        //     Vec2d::new(x1, y1),
-        //     Vec2d::new(x2, y2),
-        //     Vector4::new(1.0, 0.2, 0.2, 1.0),
-        //     12.0,
-        // );
-
-        // commands.circle(x1, y1).diameter(thickness).color(color);
-        // commands.circle(x2, y2).diameter(thickness).color(color);
-        // commands.circle(x1, y1).diameter(12.0).color(white);
-        // commands.circle(x2, y2).diameter(12.0).color(white);
-    }
-
-    let vals: Vec<_> = (100..=2400)
-        .step_by(15)
-        .map(|x| {
-            let y = (time + x as f64 / 100.0).sin() * 100.0 + 600.0;
-            Vec2d::new(x as f64, y)
-        })
-        .collect();
-
-    for p in vals.windows(2) {
-        commands.line(p[0], p[1], black, 12.0);
-    }
-    for p in vals.windows(2) {
-        commands.line(p[0], p[1], white, 6.0);
-    }
+    commands
+        .circle(700.0, 500.0)
+        .diameter(300.0)
+        .color(Color::RED);
+    commands
+        .circle(700.0, 500.0)
+        .diameter(112.0)
+        .color(Color::WHITE);
+    commands
+        .line(Vec2d::new(700.0, 500.0), Vec2d::new(1200.0, 900.0))
+        .color(Color::WHITE)
+        .thickness(18.0);
+    commands
+        .line(Vec2d::new(700.0, 500.0), Vec2d::new(1200.0, 900.0))
+        .color(Color::GREEN)
+        .thickness(12.0);
+    commands
+        .circle(700.0, 500.0)
+        .diameter(100.0)
+        .color(Color::BLUE);
+    commands
+        .circle(1800.0, 700.0)
+        .radius(500.0)
+        .color(Color::BROWN);
+    commands
+        .circle(1800.0, 700.0)
+        .radius(490.0)
+        .color(Color::RED);
+    commands
+        .circle(1800.0, 700.0)
+        .radius(120.0)
+        .color(Color::ORANGE);
+    commands
+        .circle(1800.0, 700.0)
+        .radius(60.0)
+        .color(Color::WHITE);
 }
 
 fn make_world(renderer: &mut Renderer) -> World {

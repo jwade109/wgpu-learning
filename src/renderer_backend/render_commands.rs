@@ -1,5 +1,4 @@
-use crate::renderer_backend::FontInfo;
-use glm::{Vec4, Vector2};
+use crate::renderer_backend::{Color, FontInfo};
 use std::collections::BTreeMap;
 
 pub type Vec2d = glm::Vector2<f64>;
@@ -14,23 +13,19 @@ pub enum RenderCommand {
 
 #[derive(Debug, Clone, Copy)]
 pub struct RectCommand {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
+    pub pos: Vec2d,
+    pub dims: Vec2d,
     pub angle: f64,
-    pub color: Vec4,
+    pub color: Color,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct CharCommand {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
+    pub pos: Vec2d,
+    pub dims: Vec2d,
     pub c: char,
     pub font: usize,
-    pub color: Vec4,
+    pub color: Color,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -38,7 +33,7 @@ pub struct CircleCommand {
     pub x: f64,
     pub y: f64,
     pub radius: f64,
-    pub color: Vec4,
+    pub color: Color,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -46,7 +41,7 @@ pub struct LineCommand {
     pub start: Vec2d,
     pub end: Vec2d,
     pub thickness: f64,
-    pub color: Vec4,
+    pub color: Color,
 }
 
 pub struct RenderCommands {
@@ -66,37 +61,29 @@ impl RenderCommands {
         self.commands.iter()
     }
 
-    pub fn rect(&mut self, x: f64, y: f64, w: f64, h: f64, angle: f64, color: Vec4) {
+    pub fn rect(&mut self, pos: Vec2d, dims: Vec2d, angle: f64, color: Color) {
         self.commands.push(RenderCommand::Rect(RectCommand {
-            x,
-            y,
-            width: w,
-            height: h,
+            pos,
+            dims,
             angle,
             color,
         }));
     }
 
-    pub fn circle<'a>(&'a mut self, x: f64, y: f64) -> CircleBuilder<'a> {
+    pub fn circle(&mut self, x: f64, y: f64) -> CircleBuilder<'_> {
         let builder = CircleBuilder::new(self, x, y);
         builder
     }
 
-    pub fn line(&mut self, start: Vec2d, end: Vec2d, color: Vec4, t: f64) {
-        self.commands.push(RenderCommand::Line(LineCommand {
-            start,
-            end,
-            thickness: t,
-            color,
-        }))
+    pub fn line(&mut self, start: Vec2d, end: Vec2d) -> LineBuilder<'_> {
+        let builder = LineBuilder::new(self, start, end);
+        builder
     }
 
-    pub fn char(&mut self, x: f64, y: f64, w: f64, h: f64, c: char, font: usize, color: Vec4) {
+    pub fn char(&mut self, pos: Vec2d, dims: Vec2d, c: char, font: usize, color: Color) {
         self.commands.push(RenderCommand::Char(CharCommand {
-            x,
-            y,
-            width: w,
-            height: h,
+            pos,
+            dims,
             c,
             font,
             color,
@@ -144,10 +131,10 @@ impl RenderCommands {
             let xt = x - data.origin_x as f64 * font_size;
             let yt = y - data.origin_y as f64 * font_size + font.size as f64 * font_size;
 
-            let color = Vec4::new(1.0, 1.0, 1.0, 1.0);
+            let color = Color::WHITE;
 
             if ch != ' ' {
-                self.char(xt, yt, w, h, ch, font_id, color);
+                self.char(Vec2d::new(xt, yt), Vec2d::new(w, h), ch, font_id, color);
             }
 
             col_offset += 1;
@@ -170,7 +157,7 @@ pub struct CircleBuilder<'a> {
     x: f64,
     y: f64,
     r: f64,
-    color: Vec4,
+    color: Color,
 }
 
 impl<'a> CircleBuilder<'a> {
@@ -180,7 +167,7 @@ impl<'a> CircleBuilder<'a> {
             x,
             y,
             r: 50.0,
-            color: Vec4::new(0.0, 0.3, 1.0, 0.8),
+            color: Color::new(0.0, 0.3, 1.0, 0.8),
         }
     }
 
@@ -194,7 +181,7 @@ impl<'a> CircleBuilder<'a> {
         self
     }
 
-    pub fn color(&mut self, color: Vec4) -> &mut Self {
+    pub fn color(&mut self, color: Color) -> &mut Self {
         self.color = color;
         self
     }
@@ -209,5 +196,47 @@ impl<'a> Drop for CircleBuilder<'a> {
             color: self.color,
         };
         self.commands.commands.push(RenderCommand::Circle(circle));
+    }
+}
+
+pub struct LineBuilder<'a> {
+    commands: &'a mut RenderCommands,
+    start: Vec2d,
+    end: Vec2d,
+    thickness: f64,
+    color: Color,
+}
+
+impl<'a> LineBuilder<'a> {
+    fn new(commands: &'a mut RenderCommands, start: Vec2d, end: Vec2d) -> Self {
+        Self {
+            commands,
+            start,
+            end,
+            thickness: 10.0,
+            color: Color::new(0.0, 0.0, 0.0, 1.0),
+        }
+    }
+
+    pub fn thickness(&mut self, thickness: f64) -> &mut Self {
+        self.thickness = thickness;
+        self
+    }
+
+    pub fn color(&mut self, color: Color) -> &mut Self {
+        self.color = color;
+        self
+    }
+}
+
+impl<'a> Drop for LineBuilder<'a> {
+    fn drop(&mut self) {
+        let line = LineCommand {
+            start: self.start,
+            end: self.end,
+            thickness: self.thickness,
+            color: self.color,
+        };
+        self.commands.commands.push(RenderCommand::Line(line));
     }
 }
