@@ -1,5 +1,5 @@
-use crate::renderer_backend::Color;
-use crate::renderer_backend::*;
+use crate::Color;
+use crate::*;
 use wgpu::*;
 
 pub struct SingleColorPipeline {
@@ -20,7 +20,7 @@ impl SingleColorPipeline {
         let color_ubo_bind_group_layout = make_ubo_layout(device, "Shader Params");
 
         let mut builder = PipelineBuilder::new(&device);
-        let shader = Shader::from_path("src/shaders/single_color.wgsl");
+        let shader = Shader::from_path("crates/rend/shaders/single_color.wgsl");
         builder.add_bind_group_layout(&transforms_ubo_bind_group_layout);
         builder.add_bind_group_layout(&color_ubo_bind_group_layout);
         let pipeline = builder.build_pipeline::<FullVertex>(

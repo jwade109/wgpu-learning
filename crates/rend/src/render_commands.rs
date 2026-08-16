@@ -1,4 +1,4 @@
-use crate::renderer_backend::{Color, FontInfo};
+use crate::{Color, FontInfo};
 use std::collections::BTreeMap;
 
 pub type Vec2d = glm::Vector2<f64>;

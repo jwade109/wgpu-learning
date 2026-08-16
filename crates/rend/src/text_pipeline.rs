@@ -1,7 +1,6 @@
-use std::num::NonZeroU32;
-
-use crate::{model::translation_matrix, renderer_backend::*};
+use crate::*;
 use glm::{Mat4, Vec3, Vec4};
+use std::num::NonZeroU32;
 use wgpu::*;
 
 pub struct TextPipeline {
@@ -88,7 +87,7 @@ impl TextPipeline {
         let bgl = material_bind_group_layout(device, "SpriteMaterial Bind Group Layout");
 
         let mut builder = PipelineBuilder::new(&device);
-        let shader = Shader::from_path("src/shaders/text_shader.wgsl");
+        let shader = Shader::from_path("crates/rend/shaders/text_shader.wgsl");
 
         builder.add_bind_group_layout(&bgl);
         builder.add_bind_group_layout(&colors.layout);

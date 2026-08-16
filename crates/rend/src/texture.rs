@@ -1,4 +1,4 @@
-use crate::renderer_backend::*;
+use crate::*;
 
 pub struct Texture {
     pub bind_group: wgpu::BindGroup,

@@ -1,4 +1,4 @@
-use crate::renderer_backend::{Shader, Texture, Vertex};
+use crate::{Shader, Texture, Vertex};
 
 pub struct PipelineBuilder<'a> {
     bind_group_layouts: Vec<&'a wgpu::BindGroupLayout>,

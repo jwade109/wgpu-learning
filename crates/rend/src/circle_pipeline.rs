@@ -1,5 +1,5 @@
-use crate::renderer_backend::Color;
-use crate::renderer_backend::*;
+use crate::Color;
+use crate::*;
 use glm::Mat4;
 use wgpu::*;
 
@@ -25,7 +25,7 @@ impl CirclePipeline {
         let mesh = make_quad(device);
 
         let mut builder = PipelineBuilder::new(&device);
-        let shader = Shader::from_path("src/shaders/circle.wgsl");
+        let shader = Shader::from_path("crates/rend/shaders/circle.wgsl");
 
         builder.add_bind_group_layout(&colors.layout);
         builder.add_bind_group_layout(&transforms.layout);

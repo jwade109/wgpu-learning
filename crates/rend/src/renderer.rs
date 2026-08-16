@@ -1,4 +1,4 @@
-use crate::{model::*, renderer_backend::*};
+use crate::*;
 use enum_iterator::Sequence;
 use glm::*;
 use std::collections::HashMap;
@@ -9,6 +9,24 @@ pub enum ViewSelector {
     Map,
     Lava,
     World3d,
+}
+
+pub struct MeshObject {
+    pub position: Vec3,
+    pub angle: f32,
+    pub vel: f32,
+    pub mesh_id: usize,
+    pub should_animate: bool,
+}
+
+impl MeshObject {
+    pub fn get_transform_matrix(&self) -> Matrix4<f32> {
+        let eye = mat4_identity();
+        let matrix = ext::translate(&eye, self.position)
+            * ext::rotate(&eye, self.angle, glm::Vector3::new(0.0, 0.0, 1.0));
+
+        matrix
+    }
 }
 
 pub struct Renderer<'a> {
@@ -146,7 +164,7 @@ impl<'a> Renderer<'a> {
 
         let map_pipeline = {
             let mut builder = PipelineBuilder::new(&device);
-            let shader = Shader::from_path("src/shaders/map.wgsl");
+            let shader = Shader::from_path("crates/rend/shaders/map.wgsl");
             builder.add_bind_group_layout(&time_etc_data_bind_group);
             builder.build_pipeline::<FullVertex>("Map Pipeline", &shader, config.format, true, true)
         };
@@ -320,7 +338,7 @@ impl<'a> Renderer<'a> {
         self.queue.submit(std::iter::once(command_encoder.finish()));
     }
 
-    fn draw_3d(&self, world: &World, view: &wgpu::TextureView) {
+    fn draw_3d(&self, meshes: &[MeshObject], view: &wgpu::TextureView) {
         let mut command_encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -331,19 +349,19 @@ impl<'a> Renderer<'a> {
         rp.set_bind_group(2, &self.common_shader_info.bind_group, &[]);
         self.standard_3d_pipeline.set_bindings(&mut rp);
 
-        for i in 0..world.quads.len() {
-            let matrix: Matrix4<f32> = world.quads[i].get_transform_matrix();
+        for i in 0..meshes.len() {
+            let matrix: Matrix4<f32> = meshes[i].get_transform_matrix();
             self.standard_3d_pipeline
                 .upload_transform(i as u64, &matrix, &self.queue);
         }
 
         rp.set_bind_group(1, &self.textures.values().next().unwrap().bind_group, &[]);
 
-        for i in 0..world.quads.len() {
+        for i in 0..meshes.len() {
             let bg = self.standard_3d_pipeline.transforms().bind_group(i);
 
-            let Some(mesh) = self.meshes.get(&world.quads[i].mesh_id) else {
-                println!("Failed to get mesh of type {:?}", world.quads[i].mesh_id);
+            let Some(mesh) = self.meshes.get(&meshes[i].mesh_id) else {
+                println!("Failed to get mesh of type {:?}", meshes[i].mesh_id);
                 continue;
             };
 
@@ -460,8 +478,7 @@ impl<'a> Renderer<'a> {
         }
     }
 
-    pub fn update(&mut self, world: &World) {
-        let view_proj = world.camera.to_projection_matrix(self.window);
+    pub fn update(&mut self, view_proj: Mat4, time: f32) {
         self.standard_3d_pipeline
             .upload_camera_matrix(&view_proj, &self.queue);
 
@@ -472,7 +489,7 @@ impl<'a> Renderer<'a> {
 
         let shader_params = ShaderParams {
             mouse: (self.mouse_pos_smoothed[0], self.mouse_pos_smoothed[1]),
-            time: world.time,
+            time,
             resolution: (
                 self.window.get_size().0 as f32,
                 self.window.get_size().1 as f32,
@@ -548,7 +565,7 @@ impl<'a> Renderer<'a> {
 
     pub fn render(
         &mut self,
-        world: &mut World,
+        meshes: &[MeshObject],
         commands: &RenderCommands,
     ) -> Result<(), wgpu::SurfaceError> {
         let (w, h) = self.window.get_size();
@@ -584,10 +601,10 @@ impl<'a> Renderer<'a> {
             ViewSelector::World3d => {
                 if self.draw_wireframes {
                     self.clear(&view, Color::BLACK);
-                    self.draw_3d(&world, &view);
+                    self.draw_3d(meshes, &view);
                 } else {
                     self.clear(&view, Color::rgb(117, 186, 255, 1.0));
-                    self.draw_3d(&world, &view);
+                    self.draw_3d(meshes, &view);
                     self.apply_geometry_commands(commands, &view);
                     // self.blur_pass(&self.intermediate_texture, &view);
                     self.draw_ui(&view, commands);

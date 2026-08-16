@@ -1,37 +1,11 @@
 use glm::*;
+use rend::*;
 
-use crate::{
-    model::{Camera, CameraControls},
-    renderer_backend::mat4_identity,
-};
-
-#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
-pub enum EntityKind {
-    Mesh,
-}
-
-pub struct Object {
-    pub position: Vec3,
-    pub angle: f32,
-    pub vel: f32,
-    pub kind: EntityKind,
-    pub mesh_id: usize,
-    pub should_animate: bool,
-}
-
-impl Object {
-    pub fn get_transform_matrix(&self) -> Matrix4<f32> {
-        let eye = mat4_identity();
-        let matrix = ext::translate(&eye, self.position)
-            * ext::rotate(&eye, self.angle, glm::Vector3::new(0.0, 0.0, 1.0));
-
-        matrix
-    }
-}
+use crate::camera::{Camera, CameraControls};
 
 pub struct World {
     pub time: f32,
-    pub quads: Vec<Object>,
+    pub quads: Vec<MeshObject>,
     pub camera: Camera,
 }
 
@@ -45,11 +19,10 @@ impl World {
     }
 
     pub fn ground_plane(&mut self, x: i32, z: i32, mesh_id: usize) {
-        self.quads.push(Object {
+        self.quads.push(MeshObject {
             position: Vec3::new(x as f32, 0.0, z as f32),
             angle: 0.0,
             vel: 0.0,
-            kind: EntityKind::Mesh,
             should_animate: false,
             mesh_id,
         });

@@ -1,4 +1,5 @@
 use glm::*;
+use rend::translation_matrix;
 
 pub struct Camera {
     heading: f32,
@@ -119,13 +120,4 @@ impl Camera {
         self.altitude += (self.desired_altitude - self.altitude) * 0.05;
         self.radius += (self.desired_radius - self.radius) * 0.05;
     }
-}
-
-pub fn translation_matrix(p: Vec3) -> Mat4 {
-    Matrix4::new(
-        Vec4::new(1.0, 0.0, 0.0, 0.0),
-        Vec4::new(0.0, 1.0, 0.0, 0.0),
-        Vec4::new(0.0, 0.0, 1.0, 0.0),
-        Vec4::new(p.x, p.y, p.z, 1.0),
-    )
 }

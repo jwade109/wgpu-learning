@@ -1,4 +1,4 @@
-use crate::renderer_backend::bind_group::BindGroupBuilder;
+use crate::bind_group::BindGroupBuilder;
 
 // From: https://stackoverflow.com/questions/28127165/how-to-convert-struct-to-u8
 pub fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {

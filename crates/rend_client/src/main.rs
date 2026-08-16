@@ -1,11 +1,17 @@
+mod camera;
+mod game_objects;
+
 use std::collections::{BTreeMap, HashSet};
 use std::time::Instant;
 
-use glfw::{fail_on_errors, Action, ClientApiHint, Key, MouseButton, WindowHint};
+use glfw::{Action, ClientApiHint, Key, MouseButton, WindowHint, fail_on_errors};
 use glm::*;
 use rand::rngs::{SmallRng, StdRng};
 use rand::{Rng, RngExt, SeedableRng};
-use wgpu_learning::{model::*, renderer_backend::*};
+use rend::*;
+
+use crate::camera::*;
+use crate::game_objects::*;
 
 fn make_commands(
     commands: &mut RenderCommands,
@@ -156,27 +162,24 @@ fn make_world(renderer: &mut Renderer) -> World {
         }
     }
 
-    world.quads.push(Object {
+    world.quads.push(MeshObject {
         position: Vec3::new(0.0, 6.0, -9.0),
         angle: 0.0,
         vel: 0.0,
-        kind: EntityKind::Mesh,
         should_animate: false,
         mesh_id: nine_gon_id,
     });
-    world.quads.push(Object {
+    world.quads.push(MeshObject {
         position: Vec3::new(0.0, 4.0, -5.6),
         angle: 0.0,
         vel: 0.0,
-        kind: EntityKind::Mesh,
         should_animate: false,
         mesh_id: nine_gon_id,
     });
-    world.quads.push(Object {
+    world.quads.push(MeshObject {
         position: Vec3::new(0.0, 5.0, 0.0),
         angle: 0.0,
         vel: 0.01,
-        kind: EntityKind::Mesh,
         should_animate: false,
         mesh_id: tetra_id,
     });
@@ -184,11 +187,10 @@ fn make_world(renderer: &mut Renderer) -> World {
     for i in 0..20 {
         let a = i as f32 / 5.0;
         let z = i as f32 * 1.0 - 10.0;
-        world.quads.push(Object {
+        world.quads.push(MeshObject {
             position: Vec3::new(4.5, 3.0, z),
             angle: a,
             vel: 0.0,
-            kind: EntityKind::Mesh,
             should_animate: false,
             mesh_id: quad_id,
         });
@@ -199,11 +201,10 @@ fn make_world(renderer: &mut Renderer) -> World {
         let r = 3.0 + i as f32 / 8.0;
         let x = a.cos() * r;
         let z = a.sin() * r;
-        world.quads.push(Object {
+        world.quads.push(MeshObject {
             position: Vec3::new(x as f32, 0.0, z as f32),
             angle: i as f32 * 0.4,
             vel: 1.0,
-            kind: EntityKind::Mesh,
             should_animate: true,
             mesh_id: cube_id,
         });
@@ -269,7 +270,10 @@ async fn run() {
     while !renderer.window.should_close() {
         glfw.poll_events();
 
-        renderer.update(&mut world);
+        renderer.update(
+            world.camera.to_projection_matrix(&renderer.window),
+            world.time,
+        );
 
         font_size += (target_font_size - font_size) * 0.03;
 
@@ -359,9 +363,9 @@ async fn run() {
             }
         }
 
-        match renderer.render(&mut world, &commands) {
+        match renderer.render(&world.quads, &commands) {
             Ok(_) => {}
-            Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+            Err(SurfaceError::Lost | SurfaceError::Outdated) => {
                 renderer.update_surface();
                 renderer.resize(renderer.window.get_size());
             }

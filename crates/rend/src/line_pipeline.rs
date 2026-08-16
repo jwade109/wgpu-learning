@@ -1,4 +1,4 @@
-use crate::renderer_backend::*;
+use crate::*;
 use glm::Vec4;
 use wgpu::*;
 
@@ -19,7 +19,7 @@ impl LinePipeline {
         let mesh = make_quad(device);
 
         let mut builder = PipelineBuilder::new(&device);
-        let shader = Shader::from_path("src/shaders/line.wgsl");
+        let shader = Shader::from_path("crates/rend/shaders/line.wgsl");
 
         builder.add_bind_group_layout(&data.layout);
         // builder.add_bind_group_layout(&transforms.layout);

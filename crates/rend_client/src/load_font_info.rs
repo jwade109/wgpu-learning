@@ -1,4 +1,4 @@
-use wgpu_learning::renderer_backend::FontInfo;
+use wgpu_learning::FontInfo;
 
 
 fn main() {

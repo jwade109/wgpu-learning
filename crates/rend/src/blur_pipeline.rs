@@ -1,4 +1,4 @@
-use crate::renderer_backend::*;
+use crate::*;
 use wgpu::*;
 
 pub struct BlurPipeline {
@@ -14,7 +14,7 @@ pub fn material_bind_group_layout(device: &Device, label: &str) -> BindGroupLayo
 impl BlurPipeline {
     pub fn new(device: &Device, config: &SurfaceConfiguration) -> Self {
         let bgl = material_bind_group_layout(device, "BlurPipeline Bind Group Layout");
-        let shader = Shader::from_path("src/shaders/blur_shader.wgsl");
+        let shader = Shader::from_path("crates/rend/shaders/blur_shader.wgsl");
 
         let mut builder = PipelineBuilder::new(&device);
         builder.add_bind_group_layout(&bgl);

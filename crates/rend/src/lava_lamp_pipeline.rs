@@ -1,4 +1,4 @@
-use crate::renderer_backend::*;
+use crate::*;
 use wgpu::*;
 
 pub struct LavaLampPipeline {
@@ -19,7 +19,7 @@ impl LavaLampPipeline {
         };
 
         let mut builder = PipelineBuilder::new(&device);
-        let shader = Shader::from_path("src/shaders/cells.wgsl");
+        let shader = Shader::from_path("crates/rend/shaders/cells.wgsl");
         builder.add_bind_group_layout(time_etc_data_bind_group);
         builder.add_bind_group_layout(&camera_projection_bind_group_layout);
         let pipeline = builder.build_pipeline::<FullVertex>(

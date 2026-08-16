@@ -1707,6 +1707,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
 
 [[package]]
+name = "pollster"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc6355899e1c9462875b6757c79f3caa011a1fdae12bbb1a2e72dd1f234f8336"
+
+[[package]]
 name = "ppv-lite86"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2033,6 +2039,39 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+
+[[package]]
+name = "rend"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "clap",
+ "enum-iterator",
+ "glfw",
+ "glm",
+ "image",
+ "kira",
+ "noise",
+ "num-traits",
+ "pollster 0.4.0",
+ "rand 0.10.2",
+ "regex",
+ "serde",
+ "serde_json",
+ "wgpu",
+]
+
+[[package]]
+name = "rend_client"
+version = "0.1.0"
+dependencies = [
+ "enum-iterator",
+ "glfw",
+ "glm",
+ "pollster 1.0.1",
+ "rand 0.10.2",
+ "rend",
+]
 
 [[package]]
 name = "renderdoc-sys"
@@ -2699,27 +2738,6 @@ dependencies = [
  "wgpu-types",
  "windows 0.58.0",
  "windows-core 0.58.0",
-]
-
-[[package]]
-name = "wgpu-learning"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "clap",
- "enum-iterator",
- "glfw",
- "glm",
- "image",
- "kira",
- "noise",
- "num-traits",
- "pollster",
- "rand 0.10.2",
- "regex",
- "serde",
- "serde_json",
- "wgpu",
 ]
 
 [[package]]
